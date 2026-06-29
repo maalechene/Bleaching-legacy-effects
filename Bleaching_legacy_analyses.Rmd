@@ -17,8 +17,8 @@ knitr::opts_chunk$set(echo = TRUE)
 We model Survival \~ Taxa \* Year to see whether survival was different under heat stress. We expect significantly higher mortality in year 2 (after bleaching).
 
 ```{r}
-surv1 <- read_csv("C:/Users/jc815475/OneDrive - James Cook University/PhD data/3_Coral growth/Data/CSV/survival_transition1.csv", trim_ws=TRUE)
-surv2 <- read_csv("C:/Users/jc815475/OneDrive - James Cook University/PhD data/3_Coral growth/Data/CSV/survival_transition2.csv", trim_ws=TRUE)
+surv1 <- read_csv("survival_transition1.csv", trim_ws=TRUE)
+surv2 <- read_csv("survival_transition2.csv", trim_ws=TRUE)
 surv1 <- surv1 |> 
   mutate(Reef = factor(Reef),
          Site = factor(Site),
@@ -190,8 +190,8 @@ logsize(t) \~ logsize(t previous) \* Year \* Taxa + (1\|Colony)
 #| message: false
 #| warning: false
 
-grow1 <- read_csv("C:/Users/jc815475/OneDrive - James Cook University/PhD data/3_Coral growth/Data/CSV/growth_transition1.csv", trim_ws=TRUE)
-grow2 <- read_csv("C:/Users/jc815475/OneDrive - James Cook University/PhD data/3_Coral growth/Data/CSV/growth_transition2.csv", trim_ws=TRUE)
+grow1 <- read_csv("growth_transition1.csv", trim_ws=TRUE)
+grow2 <- read_csv("growth_transition2.csv", trim_ws=TRUE)
 grow1 <- grow1 |> 
   mutate(Reef = factor(Reef),
          Site = factor(Site),
@@ -219,7 +219,7 @@ grow_2 <- grow2 |>
   filter(Taxa %in% c("Abra", "Acor", "Pdam", "Pver", "Shys"))
 ######
 
-rawdata <- read_csv("C:/Users/jc815475/OneDrive - James Cook University/PhD data/3_Coral growth/Data/CSV/growth_surv_data.csv", trim_ws=TRUE)
+rawdata <- read_csv("growth_surv_data.csv", trim_ws=TRUE)
 
 dat1 <- rawdata |> 
   mutate(Taxa_2023 = factor(Class_2023),
@@ -535,7 +535,7 @@ All growth rates are \< 1 with positive intercepts meaning that all taxa show de
 #| eval: true
 #| warning: false
 #| message: false
-surv2 <- read_csv("C:/Users/jc815475/OneDrive - James Cook University/PhD data/3_Coral growth/Data/CSV/survival_transition2.csv", trim_ws=TRUE)
+surv2 <- read_csv("survival_transition2.csv", trim_ws=TRUE)
 ```
 
 ```{r}
@@ -587,7 +587,7 @@ Append environmental variables:
 #| warning: false
 #| message: false
 
-envdata <- read_csv("C:/Users/jc815475/OneDrive - James Cook University/PhD data/3_Coral growth/Data/CSV/envdata_2022-2023.csv", trim_ws=TRUE)
+envdata <- read_csv("envdata_2022-2023.csv", trim_ws=TRUE)
 env <- envdata |>
   select(Site_code, ubedmean, Secchi_mean, temp_mean)
 env <- env |> rename(Site = Site_code)
@@ -1379,7 +1379,7 @@ In summary, no environmental variables were retained in the best-fit models for 
 #| eval: true
 #| warning: false
 #| message: false
-grow2 <- read_csv("C:/Users/jc815475/OneDrive - James Cook University/PhD data/3_Coral growth/Data/CSV/growth_transition2.csv", trim_ws=TRUE)
+grow2 <- read_csv("growth_transition2.csv", trim_ws=TRUE)
 ```
 
 ```{r}
@@ -1432,25 +1432,7 @@ grow_2 <- grow_2 |>
 #| warning: false
 #| message: false
 
-# envdata <- read_csv("C:/Users/jc815475/OneDrive - James Cook University/PhD data/3_Coral growth/Data/CSV/All_environmental_data_EcoRRAP_sites.csv", trim_ws=TRUE)
-# 
-# envdata <- envdata |> 
-#   mutate(Zone = factor(Zone),
-#          Site.code = factor(Site.code))
-# envdata <- envdata |> 
-#   filter(! Zone == "F") |> 
-#   filter(! Zone == "B")
-# envdata <- envdata |> 
-#   mutate(Reef = str_sub(Site.code, 1, 4)) |> 
-#   mutate(Reef = factor(Reef))
-# envdat <- envdata |> 
-#   filter(Reef %in% c("OCCH", "OCDA", "OCLB", "PAOR", "PAPE"))
-# 
-# env <- envdat |> 
-#   select(Site.code, ubedmean, Secchi_mean, temp_mean)
-# env <- env |> rename(Site = Site.code)
-
-envdata <- read_csv("C:/Users/jc815475/OneDrive - James Cook University/PhD data/3_Coral growth/Data/CSV/envdata_2022-2023.csv", trim_ws=TRUE)
+envdata <- read_csv("envdata_2022-2023.csv", trim_ws=TRUE)
 env <- envdata |>
   select(Site_code, ubedmean, Secchi_mean, temp_mean)
 env <- env |> rename(Site = Site_code)
@@ -2290,7 +2272,7 @@ shys_zero_crossings <- Shys_g_preds |>
 #| eval: true
 #| warning: false
 #| message: false
-surv2 <- read_csv("C:/Users/jc815475/OneDrive - James Cook University/PhD data/3_Coral growth/Data/CSV/survival_transition2.csv", trim_ws=TRUE)
+surv2 <- read_csv("survival_transition2.csv", trim_ws=TRUE)
 ```
 
 ```{r}
@@ -2826,7 +2808,7 @@ The dashed line represents the no-growth line (intercept 0, slope 1). All slopes
 #| message: false
 #| warning: false
 #| results: hide
-rawdata <- read_csv("C:/Users/jc815475/OneDrive - James Cook University/PhD data/3_Coral growth/Data/CSV/growth_surv_data.csv", trim_ws=TRUE)
+rawdata <- read_csv("growth_surv_data.csv", trim_ws=TRUE)
 
 dat1 <- rawdata |> 
   mutate(Taxa_2023 = factor(Class_2023),
