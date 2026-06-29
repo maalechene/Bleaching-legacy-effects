@@ -1,0 +1,3016 @@
+---
+title: "Bleaching_legacy_effects_analyses"
+author: "Marine Lechene"
+date: "2026-06-25"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# 1. Effect of heat stress on survival and growth of healthy colonies
+
+## 1.a. Survival and heat stress
+
+We model Survival \~ Taxa \* Year to see whether survival was different under heat stress. We expect significantly higher mortality in year 2 (after bleaching).
+
+```{r}
+surv1 <- read_csv("C:/Users/jc815475/OneDrive - James Cook University/PhD data/3_Coral growth/Data/CSV/survival_transition1.csv", trim_ws=TRUE)
+surv2 <- read_csv("C:/Users/jc815475/OneDrive - James Cook University/PhD data/3_Coral growth/Data/CSV/survival_transition2.csv", trim_ws=TRUE)
+surv1 <- surv1 |> 
+  mutate(Reef = factor(Reef),
+         Site = factor(Site),
+         Plot = factor(Plot),
+         Colony = factor(Colony),
+         Habitat = factor(Habitat),
+         Depth = factor(Depth),
+         Cross_shelf = factor(Cross_shelf),
+         Taxa = factor(Taxa))
+
+surv2 <- surv2 |> 
+  mutate(Reef = factor(Reef),
+         Site = factor(Site),
+         Plot = factor(Plot),
+         Colony = factor(Colony),
+         Habitat = factor(Habitat),
+         Depth = factor(Depth),
+         Cross_shelf = factor(Cross_shelf),
+         Taxa = factor(Taxa))
+
+surv_1 <- surv1 |>
+  filter(Taxa %in% c("Abra", "Acor", "Pdam", "Pver", "Shys"))
+surv_2 <- surv2 |>
+  filter(Taxa %in% c("Abra", "Acor", "Pdam", "Pver", "Shys"))
+
+```
+
+```{r}
+# Prepare datasets to merge them back just to look at Survival ~ Year
+surv_1$Year <- "2022"
+surv_1$Bleaching_scores <- "1"
+surv_2$Year <- "2023"
+
+s1 <- surv_1 |> 
+  rename(log_size = "log10_2021",
+         Survival = "Survival_1")
+
+s2 <- surv_2 |> 
+  rename(log_size = "log10_2022",
+         Survival = "Survival_2")
+
+s1 <- s1 |> 
+  dplyr::select(Reef, Site, Plot, Habitat, Depth, Cross_shelf, Taxa, Survival, Bleaching_scores, log_size, Year, Days_2022c)
+
+s2 <- s2 |> 
+  dplyr::select(Reef, Site, Plot, Habitat, Depth, Cross_shelf, Taxa, Survival, Bleaching_scores, log_size, Year, Days_2022c)
+
+surv_data <- rbind(s1, s2)
+
+surv_healthy <- surv_data |> 
+  filter(Bleaching_scores == "1")
+
+surv_healthy <- surv_healthy |> 
+  mutate(Year = factor(Year),
+         Plot = factor(Plot)) |> 
+  droplevels()
+
+surv_healthy |> 
+  group_by(Taxa) |> 
+  summarise(total_count = n()) #lowest sample size is Shys with 207 colonies
+  
+```
+
+```{r}
+#| label: model1.2.a. selection
+#| warning: false
+#| message: false
+m0 <- glmmTMB(Survival ~ Taxa:Year + Days_2022c + (1|Reef/Site/Plot),
+                 data = surv_healthy,
+                 family = "binomial")
+m1 <- glmmTMB(Survival ~ Taxa:Year + Days_2022c + (1|Reef/Site),
+                 data = surv_healthy,
+                 family = "binomial")
+m2 <- glmmTMB(Survival ~ Taxa:Year + Days_2022c + (1|Reef/Plot),
+                 data = surv_healthy,
+                 family = "binomial")
+m3 <- glmmTMB(Survival ~ Taxa:Year + Days_2022c + (1|Reef),
+                 data = surv_healthy,
+                 family = "binomial")
+m4 <- glmmTMB(Survival ~ Taxa:Year + Days_2022c + (1|Site/Plot),
+                 data = surv_healthy,
+                 family = "binomial")
+m5 <- glmmTMB(Survival ~ Taxa:Year + Days_2022c + (1|Site),
+                 data = surv_healthy,
+                 family = "binomial")
+m6 <- glmmTMB(Survival ~ Taxa:Year + Days_2022c + (1|Plot),
+                 data = surv_healthy,
+                 family = "binomial")
+```
+
+```{r}
+AIC(m0, m1, m2, m3, m4, m5, m6)
+```
+
+Best random effect structure:
+
+```{r}
+#| label: model surv1.2.a
+#| message: false
+#| warning: false
+surv_heatstress <- glmmTMB(Survival ~ Taxa:Year + Days_2022c + (1|Reef/Plot),
+                 data = surv_healthy,
+                 family = "binomial")
+```
+
+```{r}
+#| label: model surv1.2.a resids
+#| message: false
+#| warning: false
+#| results: false
+#| echo: false
+surv_heatstress |> simulateResiduals(plot=T)
+```
+
+```{r}
+#| label: model surv1.2.a preds
+#| message: false
+#| warning: false
+#| echo: false
+surv_heatstress_emm <- emmeans::emmeans(surv_heatstress, ~Year*Taxa, type = 'response')
+surv_heatstress_emm <- as.data.frame(surv_heatstress_emm)
+surv_heatstress_emm
+```
+
+## 1.b. Figure 2
+
+```{r}
+#| label: model surv1.2.a fig
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 12
+#| fig-height: 10
+
+taxa_labels <- c("Abra" = "Acropora staghorn",
+                 "Acor" = "Acropora corymbose",
+                 "Pdam" = "Pocillopora damicornis",
+                 "Pver" = "Pocillopora verrucosa",
+                 "Shys" = "Seriatopora hystrix")
+
+surv_heatstress_emm |> ggplot() +
+  geom_point(aes(x = Year, y = prob, fill = Year, group = Taxa),
+             size = 4, pch = 21)+
+  geom_errorbar(aes(x = Year, ymin = asymp.LCL, ymax = asymp.UCL, 
+                                   group = Taxa), width = 0.1, linewidth = 0.8) +
+  scale_y_continuous(breaks = seq(0, 1.5, by = 0.25), limits = c(0.5, 1)) +
+  scale_fill_manual(values = c("cadetblue", "darkorange"))+
+  theme_bw() +
+  facet_wrap(~ Taxa, labeller =  as_labeller(taxa_labels), ncol = 2)+
+  labs(x = "", y = "Survival probability") +
+  theme(
+    axis.text.x = element_blank(),
+    panel.grid.major.y = element_line(linetype = "dashed"),
+    panel.grid.minor.y = element_blank()
+  )
+```
+
+Survival probability tend to be lower in 2023 even for healthy colonies. Only *S. hystrix* shows significant differences in survival probability between 2022 and 2023. We could also say for A. staghorn as there was 0 mortality in 2021-2022.
+
+## 1.c. Growth and heat stress
+
+Here we modeled growth for only 'healthy' colonies (i.e., colonies that did not bleach in 2022) and only Davies and Palms so we could include them all in a single model:
+
+logsize(t) \~ logsize(t previous) \* Year \* Taxa + (1\|Colony)
+
+```{r}
+#| label: healthymod dataprep
+#| echo: false
+#| message: false
+#| warning: false
+
+grow1 <- read_csv("C:/Users/jc815475/OneDrive - James Cook University/PhD data/3_Coral growth/Data/CSV/growth_transition1.csv", trim_ws=TRUE)
+grow2 <- read_csv("C:/Users/jc815475/OneDrive - James Cook University/PhD data/3_Coral growth/Data/CSV/growth_transition2.csv", trim_ws=TRUE)
+grow1 <- grow1 |> 
+  mutate(Reef = factor(Reef),
+         Site = factor(Site),
+         Plot = factor(Plot),
+         Colony = factor(Colony),
+         Habitat = factor(Habitat),
+         Depth = factor(Depth),
+         Cross_shelf = factor(Cross_shelf),
+         Taxa = factor(Taxa))
+
+grow2 <- grow2 |> 
+  mutate(Reef = factor(Reef),
+         Site = factor(Site),
+         Plot = factor(Plot),
+         Colony = factor(Colony),
+         Habitat = factor(Habitat),
+         Depth = factor(Depth),
+         Cross_shelf = factor(Cross_shelf),
+         Taxa = factor(Taxa))
+
+# Filter for taxa of interest
+grow_1 <- grow1 |>
+  filter(Taxa %in% c("Abra", "Acor", "Pdam", "Pver", "Shys"))
+grow_2 <- grow2 |>
+  filter(Taxa %in% c("Abra", "Acor", "Pdam", "Pver", "Shys"))
+######
+
+rawdata <- read_csv("C:/Users/jc815475/OneDrive - James Cook University/PhD data/3_Coral growth/Data/CSV/growth_surv_data.csv", trim_ws=TRUE)
+
+dat1 <- rawdata |> 
+  mutate(Taxa_2023 = factor(Class_2023),
+         Taxa_2023 = fct_recode(Taxa_2023,
+                                Atab = "Acyt",
+                                Atab = "Ahya",
+                                Abra = "Asta",
+                                Adgt = "Agem",
+                                Adgt = "Ahum",
+                                Acor = "Amil",
+                                Acor = "Aten",
+                                Gspp = "Gedw",
+                                Gspp = "Gret"),
+         Taxa_2022 = factor(Class_2022),
+         Taxa_2022 = fct_recode(Taxa_2022,
+                                Atab = "Acyt",
+                                Atab = "Ahya",
+                                Abra = "Asta",
+                                Adgt = "Agem",
+                                Adgt = "Ahum",
+                                Acor = "Amil",
+                                Acor = "Aten",
+                                Gspp = "Gedw",
+                                Gspp = "Gret"),
+         Taxa_2021 = factor(Class_2021),
+         Taxa_2021 = fct_recode(Taxa_2021,
+                                Atab = "Acyt",
+                                Atab = "Ahya",
+                                Abra = "Asta",
+                                Adgt = "Agem",
+                                Adgt = "Ahum",
+                                Acor = "Amil",
+                                Acor = "Aten",
+                                Gspp = "Gedw",
+                                Gspp = "Gret"))
+
+### Subset data for each transition
+healthy <- dat1 |> 
+  filter(to_use_0 == "yes" & to_use_growth_1 == "yes" & to_use_growth_2 == "yes")
+
+### Only retain taxa of interest
+healthy <- healthy |> 
+  filter(Taxa_2023 %in% c("Abra", "Acor", "Pdam", "Pver", "Shys")) |> 
+  droplevels()
+
+healthy <- healthy |> 
+  filter(Taxa_2022 %in% c("Abra", "Acor", "Pdam", "Pver", "Shys")) |> 
+  droplevels()
+
+healthy <- healthy |> 
+  filter(Taxa_2021 %in% c("Abra", "Acor", "Pdam", "Pver", "Shys")) |> 
+  droplevels()
+
+### only retain rows where Taxa match throughout the years
+healthy <- healthy[healthy$Taxa_2021 == healthy$Taxa_2022 & healthy$Taxa_2022 == healthy$Taxa_2023, ]
+
+### Check taxa levels for each year
+levels(healthy$Taxa_2021)
+levels(healthy$Taxa_2022)
+levels(healthy$Taxa_2023)
+
+### only retain colonies that stayed healthy in Year 2
+healthy <- healthy |> 
+  mutate(Bleaching_scores = factor(Bleaching_scores)) |> 
+  filter(Bleaching_scores == "1")
+
+## Setup hierarchical design
+healthy <- healthy |> 
+  mutate(Plot = factor(Plot_ID),
+         Zone = factor(str_sub(Plot, 9,9)),
+         Reef = factor(str_sub(Plot, 1,4)),
+         Site = factor(str_sub(Plot, 1,9)), #unique combination of Reef/Site/Zone
+         Site_type = factor(str_sub(Plot, 6, 7)),
+         Colony_ID = row_number(),
+         Colony = factor(paste(Plot, Colony_ID, sep = "_")),
+         Habitat = factor(paste(Site_type, Zone, sep = "_")),
+         Reef = fct_recode(Reef,
+                           PA = "PAPE",
+                           PA = "PAOR"),
+         Depth = fct_recode(Zone,
+                            Deep = "D",
+                            Shallow = "S"),
+         Area_cm_2021 = Area_2021*10000, #change area in m2 to cm2
+         Area_cm_2022 = Area_2022*10000,
+         Area_cm_2023 = Area_2023*10000,
+         log_2021= log(Area_cm_2021),
+         log_2022= log(Area_cm_2022),
+         log_2023= log(Area_cm_2023),
+         log10_2021=log10(Area_cm_2021),
+         log10_2022 =log10(Area_cm_2022),
+         log10_2023 =log10(Area_cm_2023),
+         Date_2021 = factor(Date_2021),
+         Date_2022 = factor(Date_2022),
+         Taxa = factor(Taxa_2021),
+         Cross_shelf = fct_recode(Reef,
+                                  offshore = "OCCH",
+                                  offshore = "OCDA",
+                                  offshore = "OCLB",
+                                  inshore = "PA"))
+
+
+healthy <- healthy |> 
+  mutate(
+    Days = case_when(
+      Date_2021 == "202101" ~ 365,
+      Date_2021 == "202105" ~ 240, #add variable to account for different in days between surveys in 2021
+      TRUE ~ NA_real_
+    ),
+    Days_c = Days - 365 #center on 365 days as the reference interval
+  )
+
+healthy <- healthy |> 
+  dplyr::select(Reef, Site, Plot, Colony, Habitat, Depth, Cross_shelf, Taxa, Area_cm_2021, Area_cm_2022, Area_cm_2023, log_2021, log_2022, log_2023, log10_2021, log10_2022, log10_2023, Note_2021, Note_2022, Note_2023, Days_c)
+
+growth_2022 <- healthy |> 
+  transmute(
+    Reef, Site, Plot, Colony, Habitat, Depth, Cross_shelf, Taxa,
+    Year = factor("2022", levels = c("2022", "2023")),
+    Area = Area_cm_2022,
+    Area_prev = Area_cm_2021,
+    log_size = log_2022,
+    log_size_prev = log_2021,
+    log10_size = log10_2022,
+    log10_size_prev = log10_2021,
+    Days_2022c = Days_c  
+  )
+
+growth_2023 <- healthy |> 
+  transmute(
+    Reef, Site, Plot, Colony, Habitat, Depth, Cross_shelf, Taxa,
+    Year = factor("2023", levels = c("2022", "2023")),
+    Area = Area_cm_2023,
+    Area_prev = Area_cm_2022,
+    log_size = log_2023,
+    log_size_prev = log_2022,
+    log10_size = log10_2023,
+    log10_size_prev = log10_2022,
+    Days_2022c = 0  
+  )
+
+healthy_model_data <- bind_rows(growth_2022, growth_2023) 
+
+healthy_model_data |> 
+  group_by(Taxa) |> 
+  summarise(total_count = n()/2) #low number for Shys (4), Pdam (14)
+```
+
+Only 4 healthy colonies of S. hystrix to follow - caution when interpreting the results
+
+```{r}
+#| label: healthymod
+#| message: false
+#| warning: false
+healthy_m1 <- glmmTMB(log_size ~ log_size_prev : Year : Taxa + Days_2022c + (1|Colony),
+                     data = healthy_model_data)
+healthy_m2 <- glmmTMB(log_size ~ log_size_prev : Year : Taxa + Days_2022c + (1|Plot/Colony),
+                     data = healthy_model_data)
+healthy_m3 <- glmmTMB(log_size ~ log_size_prev : Year : Taxa + Days_2022c + (1|Site/Plot/Colony),
+                     data = healthy_model_data)
+healthy_m4 <- glmmTMB(log_size ~ log_size_prev : Year : Taxa + Days_2022c + (1|Reef/Site/Plot/Colony),
+                     data = healthy_model_data)
+healthy_m5 <- glmmTMB(log_size ~ log_size_prev : Year : Taxa + Days_2022c + (1|Reef/Colony),
+                     data = healthy_model_data)
+healthy_m6 <- glmmTMB(log_size ~ log_size_prev : Year : Taxa + Days_2022c + (1|Site/Colony),
+                     data = healthy_model_data)
+
+```
+
+```{r}
+#| label: healthymod AIC
+#| message: false
+#| warning: false
+
+AICc(healthy_m1, healthy_m2, healthy_m3, healthy_m4, healthy_m5, healthy_m6)
+```
+
+Best random effect structure is (1\|Site/Plot/Colony)
+
+```{r}
+#| label: healthymod summary
+summary(healthy_m3)
+```
+
+```{r}
+#| label: healthymod preds
+#| echo: false
+#| message: false
+#| warning: false
+
+healthy_m3.resid <- healthy_m3 |>  simulateResiduals(plot=T)
+
+#Marginal effects
+preds <- ggpredict(healthy_m3, terms = c("log_size_prev [all]", "Year", "Taxa"))
+preds <- preds |> rename(Taxa = facet)
+```
+
+```{r}
+#| label: healthymod emmeans
+#| echo: false
+#| message: false
+#| warning: false
+emm <- emmeans(
+  healthy_m3,
+  ~ Year | Taxa,
+  at = list(log_size_prev = mean(healthy_model_data$log_size_prev)),
+  type = "response"  # or type = "link" for log scale
+)
+
+pairwise_contrasts <- contrast(emm, method = "pairwise", adjust = "none") |>
+  summary() |>
+  mutate(Significance = ifelse(p.value < 0.05, "*", ""))
+
+knitr::kable(pairwise_contrasts, digits = 5,
+             caption = "Pairwise contrasts of Year within each coral taxon") |>
+  kableExtra::kable_styling("striped", full_width = FALSE) |>
+  kableExtra::row_spec(0, bold = TRUE)
+
+```
+
+All taxa except Pdam show significant difference in growth before and after heatstress
+
+## 1.d. Figure 3
+
+```{r}
+#| label: healthymodfig
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 12
+#| fig-height: 10
+
+preds$diff <- preds$predicted - preds$x
+zero_crossings <- preds |>
+  group_by(Taxa, group) |>
+  arrange(abs(diff)) |>  # Sort by the smallest absolute difference
+  slice(1)                # Take the closest point to the no-growth line
+
+
+# Compute the range of 'log' for each Taxa
+log_ranges <- healthy_model_data |>
+  group_by(Taxa) |>
+  summarize(min_log = min(log_size, na.rm = TRUE),
+            max_log = max(log_size, na.rm = TRUE))
+
+ggplot() +
+  # Add shaded rectangles outside the real size range for each Taxa
+  geom_rect(data = log_ranges, 
+            aes(xmin = -Inf, xmax = min_log, ymin = -Inf, ymax = Inf), 
+            fill = "grey", alpha = 0.2) +  # Left side greyed out
+  geom_rect(data = log_ranges, 
+            aes(xmin = max_log, xmax = Inf, ymin = -Inf, ymax = Inf), 
+            fill = "grey", alpha = 0.2) +  # Right side greyed out
+  # Add ribbons for confidence intervals
+  geom_ribbon(data = preds, 
+              aes(x = x, ymin = conf.low, ymax = conf.high, fill = group), 
+              alpha = 0.2) +
+  # Add predicted lines
+  geom_line(data = preds, aes(x = x, y = predicted, color = group), size = 1) +  
+  geom_abline(intercept = 0, 
+              slope = 1, 
+              color = "black", 
+              size = 1) +
+  facet_wrap(~ Taxa) +  
+  labs(x = "log(size at t0)", 
+       y = "log(size at t1)") +
+  theme_bw() +
+  theme(
+    legend.title = element_blank(),
+    legend.position = "bottom",
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_blank()
+  ) +
+  
+  scale_color_manual(values = c("2022" = "cadetblue", "2023" = "#D55E00")) +
+  scale_fill_manual(values = c("2022" = "cadetblue", "2023" = "#D55E00"), guide = FALSE) +  # For ribbons only
+  scale_x_continuous(breaks = seq(2, 10, by = 1), limits = c(2, 10)) +
+  scale_y_continuous(breaks = seq(2, 10, by = 2), limits = c(2, 10)) +
+  geom_segment(data = zero_crossings, 
+               aes(x = x, xend = x, y = 0, yend = x, color = group), 
+               linetype = "dashed", size = 1)
+
+
+
+```
+
+This plot shows model predictions for size at t depending on size at t previous. The dashed line represents the no-growth line where size t = size t previous. The vertical lines represent the size at which corals stopped to grow for each year (when the regression lines cross the no-growth line). We can see that for most taxa, the size at which corals stopped to grow are very similar between years but also between taxa (\~ 7 on log scale = 1100 cm2 = 37 cm in diameter on average).
+
+We can also calculate the growth rates (slopes) of each taxon for each year:
+
+```{r}
+# Calculate growth rates
+growth_rates <- preds |>
+  group_by(Taxa, group) |>
+  do(tidy(lm(predicted ~ x, data = .))) |>
+  filter(term == "x") |>
+  dplyr::select(Taxa, group, slope = estimate, std.error = std.error)
+
+# View the growth rates
+growth_rates
+```
+
+All growth rates are \< 1 with positive intercepts meaning that all taxa show decelerating growth which is consistent with allometric growth.
+
+
+# 2. Effect of bleaching severity, size and environmental variables on survival and growth
+
+## 2.1. Survival
+
+```{r}
+#| label: ReadData survival
+#| output: false
+#| echo: false
+#| eval: true
+#| warning: false
+#| message: false
+surv2 <- read_csv("C:/Users/jc815475/OneDrive - James Cook University/PhD data/3_Coral growth/Data/CSV/survival_transition2.csv", trim_ws=TRUE)
+```
+
+```{r}
+#| label: survival prep
+#| output: false
+#| echo: false
+#| eval: true
+#| warning: false
+#| message: false
+surv_2 <- surv2 |> 
+  mutate(Reef = factor(Reef),
+         Site = factor(Site),
+         Plot = factor(Plot),
+         Colony = factor(Colony),
+         Habitat = factor(Habitat),
+         Depth = factor(Depth),
+         Cross_shelf = factor(Cross_shelf),
+         Taxa = factor(Taxa))|> 
+  filter(Taxa %in% c("Abra", "Acor", "Pdam", "Pver", "Shys"))
+
+surv_2 <- surv_2 |> rename(Survival = "Survival_2",
+                           log_size = "log_2022")
+
+surv_2_sub <- surv_2 |> 
+  filter(!Bleaching_scores == "6")
+
+surv_2_sub <- surv_2_sub |> 
+  mutate(Bleaching_scores = factor(Bleaching_scores),
+         bl_cat1 = fct_recode(Bleaching_scores,
+                              `no bleaching` = "1",
+                              `minor bleaching` = "2",
+                              `major bleaching` = "3",
+                              `fully bleached` = "4",
+                              `recent partial mortality` = "5"),
+         bl_cat2 = fct_recode(Bleaching_scores,
+                              `no bleaching` = "1",
+                              `partial bleaching` = "2",
+                              `partial bleaching` = "3",
+                              `fully bleached` = "4",
+                              `recent partial mortality` = "5"))
+
+```
+
+Append environmental variables:
+```{r}
+#| label: model env data prep
+#| echo: false
+#| results: false
+#| warning: false
+#| message: false
+
+envdata <- read_csv("C:/Users/jc815475/OneDrive - James Cook University/PhD data/3_Coral growth/Data/CSV/envdata_2022-2023.csv", trim_ws=TRUE)
+env <- envdata |>
+  select(Site_code, ubedmean, Secchi_mean, temp_mean)
+env <- env |> rename(Site = Site_code)
+
+env <- env |> 
+  mutate(
+    ubedmean_z = scale(ubedmean)[,1],
+    Secchi_mean_z = scale(Secchi_mean)[,1],
+    temp_mean_z = scale(temp_mean)[,1]
+  )
+
+## merge datasets
+surv_env_dat <- merge(surv_2_sub, env, by = "Site", all.x = TRUE)
+
+surv_env_dat <- surv_env_dat |> 
+  mutate(Taxa = factor(Taxa)) |> 
+  mutate(Site_code = str_sub(Site, 1, 8))
+
+
+## filter for NAs
+surv_env_dat <- surv_env_dat[complete.cases(surv_env_dat[, c("ubedmean_z", "Secchi_mean_z", "temp_mean")]), ]
+
+surv_env_dat$bl_cat2 <- relevel(surv_env_dat$bl_cat2, ref = "no bleaching")
+surv_env_dat$bl_cat1 <- relevel(surv_env_dat$bl_cat1, ref = "no bleaching")
+
+surv_env_dat |> 
+  group_by(Taxa) |> 
+  summarise(total_count = n())#lowest sample size is Pdam with 208 colonies
+```
+
+### 2.1.1. Model fitting and selection
+
+We formulate the hypothesis that water flow (by lowering water temperature) and clarity (by lowering light intensity) could help bleached corals survive better.
+
+*Note: prior to this analysis, we tested whether initial size had a significant influence on survival by running model selection by comparing AIC of three models per taxon: 1) initial size interacting with bleaching severity, 2) initial size + bleaching severity and 3) just bleaching severity. For all morphotaxa, the best-fit model had initial size, interacting with bleaching severity or not.See Supplementary analyses section below*
+
+
+Testing different random effect structures:
+
+```{r}
+#| label: randon effect selection survival Abra
+Abra_s0 <- glmmTMB(Survival ~ log_size : bl_cat1  +
+                (1|Reef/Site_code/Plot),
+              data = surv_env_dat[surv_env_dat$Taxa == "Abra",],
+              family = "binomial")
+
+Abra_s1 <- glmmTMB(Survival ~ log_size : bl_cat1  +
+                (1|Reef/Site_code),
+              data = surv_env_dat[surv_env_dat$Taxa == "Abra",],
+              family = "binomial")
+
+Abra_s2 <- glmmTMB(Survival ~ log_size : bl_cat1  +
+                (1|Site_code/Plot),
+              data = surv_env_dat[surv_env_dat$Taxa == "Abra",],
+              family = "binomial")
+
+Abra_s3 <- glmmTMB(Survival ~ log_size : bl_cat1  +
+                (1|Site_code),
+              data = surv_env_dat[surv_env_dat$Taxa == "Abra",],
+              family = "binomial")
+
+```
+
+```{r}
+#| label: randon effect selection survival Abra AIC
+AIC(Abra_s0, Abra_s1, Abra_s2, Abra_s3) #best structure is 1|Site_code for Abra
+```
+
+```{r}
+#| label: randon effect selection survival Acor
+Acor_s0 <- glmmTMB(Survival ~ log_size : bl_cat1  +
+                (1|Reef/Site_code/Plot),
+              data = surv_env_dat[surv_env_dat$Taxa == "Acor",],
+              family = "binomial")
+
+Acor_s1 <- glmmTMB(Survival ~ log_size : bl_cat1  +
+                (1|Reef/Site_code),
+              data = surv_env_dat[surv_env_dat$Taxa == "Acor",],
+              family = "binomial")
+
+Acor_s2 <- glmmTMB(Survival ~ log_size : bl_cat1  +
+                (1|Site_code/Plot),
+              data = surv_env_dat[surv_env_dat$Taxa == "Acor",],
+              family = "binomial")
+
+Acor_s3 <- glmmTMB(Survival ~ log_size : bl_cat1  +
+                (1|Site_code),
+              data = surv_env_dat[surv_env_dat$Taxa == "Acor",],
+              family = "binomial")
+
+```
+
+```{r}
+#| label: randon effect selection survival Acor AIC
+AIC(Acor_s0, Acor_s1, Acor_s2, Acor_s3) #best structure is 1|Site_code for Acor
+```
+
+```{r}
+#| label: randon effect selection survival Pdam
+Pdam_s0 <- glmmTMB(Survival ~ log_size : bl_cat1  +
+                (1|Reef/Site_code/Plot),
+              data = surv_env_dat[surv_env_dat$Taxa == "Pdam",],
+              family = "binomial")
+
+Pdam_s1 <- glmmTMB(Survival ~ log_size : bl_cat1  +
+                (1|Reef/Site_code),
+              data = surv_env_dat[surv_env_dat$Taxa == "Pdam",],
+              family = "binomial")
+
+Pdam_s2 <- glmmTMB(Survival ~ log_size : bl_cat1  +
+                (1|Site_code/Plot),
+              data = surv_env_dat[surv_env_dat$Taxa == "Pdam",],
+              family = "binomial")
+
+Pdam_s3 <- glmmTMB(Survival ~ log_size : bl_cat1  +
+                (1|Site_code),
+              data = surv_env_dat[surv_env_dat$Taxa == "Pdam",],
+              family = "binomial")
+
+```
+
+```{r}
+#| label: randon effect selection survival Pdam AIC
+AIC(Pdam_s0, Pdam_s1, Pdam_s2, Pdam_s3) #best structure is 1|Site_code for Pdam
+```
+
+```{r}
+#| label: randon effect selection survival Pver
+Pver_s0 <- glmmTMB(Survival ~ log_size : bl_cat1  +
+                (1|Reef/Site_code/Plot),
+              data = surv_env_dat[surv_env_dat$Taxa == "Pver",],
+              family = "binomial")
+
+Pver_s1 <- glmmTMB(Survival ~ log_size : bl_cat1  +
+                (1|Reef/Site_code),
+              data = surv_env_dat[surv_env_dat$Taxa == "Pver",],
+              family = "binomial")
+
+Pver_s2 <- glmmTMB(Survival ~ log_size : bl_cat1  +
+                (1|Site_code/Plot),
+              data = surv_env_dat[surv_env_dat$Taxa == "Pver",],
+              family = "binomial")
+
+Pver_s3 <- glmmTMB(Survival ~ log_size : bl_cat1  +
+                (1|Site_code),
+              data = surv_env_dat[surv_env_dat$Taxa == "Pver",],
+              family = "binomial")
+
+```
+
+```{r}
+#| label: randon effect selection survival Pver AIC
+AIC(Pver_s0, Pver_s1, Pver_s2, Pver_s3) #best structure is 1|Site_code for Pver
+```
+
+```{r}
+#| label: randon effect selection survival Shys
+Shys_s0 <- glmmTMB(Survival ~ log_size : bl_cat1  +
+                (1|Reef/Site_code/Plot),
+              data = surv_env_dat[surv_env_dat$Taxa == "Shys",],
+              family = "binomial")
+
+Shys_s1 <- glmmTMB(Survival ~ log_size : bl_cat1  +
+                (1|Reef/Site_code),
+              data = surv_env_dat[surv_env_dat$Taxa == "Shys",],
+              family = "binomial")
+
+Shys_s2 <- glmmTMB(Survival ~ log_size : bl_cat1  +
+                (1|Site_code/Plot),
+              data = surv_env_dat[surv_env_dat$Taxa == "Shys",],
+              family = "binomial")
+
+Shys_s3 <- glmmTMB(Survival ~ log_size : bl_cat1  +
+                (1|Site_code),
+              data = surv_env_dat[surv_env_dat$Taxa == "Shys",],
+              family = "binomial")
+
+```
+
+```{r}
+#| label: randon effect selection survival Shys AIC
+AIC(Shys_s0, Shys_s1, Shys_s2, Shys_s3) #best structure is 1|Site_code/Plot for Shys so will need to run model selection separately
+```
+
+Based on the best base models and best random effect structure for each taxon, We create a function that adapts dynamically to each taxon's needs. Rather than writing five separate functions to apply model selection to test all environmental variables, we can parametrise one flexible function using a simple configuration list per taxon.
+
+First let's create a configuration list per taxon:
+
+```{r}
+#|label: create configuration lists
+
+taxon_configs <- list(
+  Abra = list(
+    base_formula = Survival ~ log_size : bl_cat1,
+    random_effects = "(1 | Site_code)"
+  ),
+  Acor = list(
+    base_formula = Survival ~ log_size + bl_cat1,
+    random_effects = "(1 | Site_code)"
+  ),
+  Pdam = list(
+    base_formula = Survival ~ log_size + bl_cat1,
+    random_effects = "(1 | Site_code)"
+  ),
+  Pver = list(
+    base_formula = Survival ~ log_size + bl_cat1,
+    random_effects = "(1 | Site_code)"
+  ),
+  Shys = list(
+    base_formula = Survival ~ log_size : bl_cat1,
+    random_effects = "(1 | Site_code/Plot)"
+  )
+)
+
+```
+
+Then write a flexible model-fitting function:
+
+```{r}
+#|label: create flexible function to fit models
+
+fit_survival_models_strategic <- function(taxon, data, config) {
+  df <- data |> dplyr::filter(Taxa == taxon)
+  
+  base_formula <- config$base_formula
+  re_structure <- config$random_effects
+  
+  # Extract base fixed effects as a string
+  base_fixed_str <- paste(deparse(base_formula[[3]]), collapse = "")
+  
+  # Combine base and added terms as a formula string
+  make_full_formula <- function(extra_terms) {
+    # Combine fixed effects and random effects
+    formula_str <- paste0("Survival ~ ", base_fixed_str, 
+                          if (!is.null(extra_terms)) paste0(" + ", extra_terms) else "", 
+                          " + ", re_structure)
+    as.formula(formula_str)
+  }
+
+  # Define all model formulas
+  surv_formulas <- list(
+    full           = make_full_formula("Secchi_mean_z * bl_cat1 + ubedmean_z * bl_cat1 + temp_mean_z * bl_cat1"),
+    null           = make_full_formula(NULL),
+    
+    no_clarity     = make_full_formula("ubedmean_z * bl_cat1 + temp_mean_z * bl_cat1"),
+    no_velocity    = make_full_formula("Secchi_mean_z * bl_cat1 + temp_mean_z * bl_cat1"),
+    no_temp        = make_full_formula("Secchi_mean_z * bl_cat1 + ubedmean_z * bl_cat1"),
+    
+    only_clarity   = make_full_formula("Secchi_mean_z * bl_cat1"),
+    only_velocity  = make_full_formula("ubedmean_z * bl_cat1"),
+    only_temp      = make_full_formula("temp_mean_z * bl_cat1")
+  )
+
+  # Fit the models
+  surv_models <- lapply(surv_formulas, function(f) {
+    glmmTMB(f, data = df, family = binomial)
+  })
+
+  return(surv_models)
+}
+
+
+
+
+```
+
+Run the models for each taxon using their config:
+
+```{r}
+#|label: run models depending on configs
+
+taxa_list <- names(taxon_configs)
+
+surv_model_results <- lapply(taxa_list, function(taxon) {
+  fit_survival_models_strategic(taxon, surv_env_dat, taxon_configs[[taxon]])
+})
+names(surv_model_results) <- taxa_list
+
+```
+
+then we extract AIC to select best models per taxon:
+
+```{r}
+#|label: extract AIC
+
+surv_aic_results <- lapply(surv_model_results, function(taxon_models) {
+  sapply(taxon_models, function(m) {
+    if (!is.null(m) && !inherits(m, "try-error")) AIC(m) else NA
+  })
+})
+
+for (taxon in names(surv_aic_results)) {
+  cat("\n--- AIC Results for", taxon, "---\n")
+  print(sort(surv_aic_results[[taxon]]))  # sorts from best (lowest AIC) to worst
+}
+```
+
+### 2.1.2. Model summary and diagnostics
+
+Acropora staghorn
+
+```{r}
+#|label: summary survival best-fit model Abra
+summary(surv_model_results$Abra$null)
+```
+
+Model diagnostics:
+
+```{r}
+#|label: simulated residuals Abra
+Abra_sim_res <- simulateResiduals(surv_model_results$Abra$null, plot = TRUE)
+```
+
+```{r}
+#|label: overdispersion Abra
+testDispersion(Abra_sim_res)
+```
+
+```{r}
+#|label: multicollinearity Abra
+# library(car)
+# car::vif(model_results$Abra$s0) no need
+```
+
+Acropora corymbose
+
+```{r}
+#|label: summary survival best-fit model Acor
+summary(surv_model_results$Acor$null)
+```
+
+Best-fit model for *A. corymbose* includes additive fixed effects of initial size and bleaching severity, the survival probability of colonies in the bleaching category "recent partial mortality" is significantly different from "no bleaching"
+
+Model diagnostics:
+
+```{r}
+#|label: simulated residuals Acor
+Acor_sim_res <- simulateResiduals(surv_model_results$Acor$null, plot = TRUE)
+```
+
+```{r}
+#|label: overdispersion Acor
+testDispersion(Acor_sim_res)
+```
+
+```{r}
+#|label: multicollinearity Acor
+
+#car::vif(model_results$Acor$s0g)
+```
+
+Pocillopora damicornis
+
+```{r}
+#|label: summary survival best-fit model Pdam
+summary(surv_model_results$Pdam$null)
+```
+
+Model diagnostics:
+
+```{r}
+#|label: simulated residuals Pdam
+Pdam_sim_res <- simulateResiduals(surv_model_results$Pdam$null, plot = TRUE)
+```
+
+```{r}
+#|label: overdispersion Pdam
+testDispersion(Pdam_sim_res)
+```
+
+For *P. damicornis*, the best-fit model includes initial size with a positive effect on survival and bleaching severity. Only the effect of 'recent partial mortality' category is significantly different from the 'no bleaching' category.
+
+Pocillopora verrucosa
+
+```{r}
+#|label: summary survival best-fit model Pver
+summary(surv_model_results$Pver$null)
+```
+
+Model diagnostics:
+
+```{r}
+#|label: simulated residuals Pver
+Pver_sim_res <- simulateResiduals(surv_model_results$Pver$null, plot = TRUE)
+```
+
+```{r}
+#|label: overdispersion Pver
+testDispersion(Pver_sim_res)
+```
+
+For *P. verrucosa*, the best-fit model includes initial size with a positive effect on survival and bleaching severity with significant negative effect. The effect of bleaching severity 'major bleaching', 'fully bleached' and 'recent partial mortality' are significantly different from 'no bleaching'.
+
+Seriatopora hystrix
+
+```{r}
+#|label: summary survival best-fit model Shys
+summary(surv_model_results$Shys$only_temp)
+```
+
+Model diagnostics:
+
+```{r}
+#|label: simulated residuals Shys
+Shys_sim_res <- simulateResiduals(surv_model_results$Shys$null, plot = TRUE)
+```
+
+```{r}
+#|label: overdispersion Shys
+testDispersion(Shys_sim_res)
+```
+
+For *S. hystrix*, the best-fit model includes initial size interacting with bleaching severity and temperature interacting with bleaching severity but this interaction isn't significant.
+
+### 2.1.3. Summary figures
+
+#### 2.1.3.a. Figure 4: Acropora staghorn
+
+```{r}
+#| label: Abra surv preds
+#| echo: false
+Abra_best_model <- model_results$Abra$null
+Abra_s_preds <- ggpredict(Abra_best_model, terms = c("log_size [all]", "bl_cat1"))
+```
+
+```{r}
+#| label: Abra surv figure
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 10
+#| fig-height: 8
+
+colours_sev = c("#F0E442",  "#E69F00", "#D55E00", "red", "black")
+
+
+ggplot() +
+  geom_line(data = Abra_s_preds, 
+            aes(x = x, y = predicted, color = group), 
+            size = 1) +
+  geom_ribbon(data = Abra_s_preds,
+              aes(x = x,
+                  ymin = conf.low,
+                  ymax = conf.high,
+                  fill = group),
+              alpha = 0.2,
+              inherit.aes = FALSE,
+              show.legend = FALSE) +
+  labs(x = "Initial size (log)",
+       y = "Survival probability",
+       color = "") +
+  scale_color_manual(values = colours_sev) +
+  scale_fill_manual(values = colours_sev) +
+  theme_bw() +
+  theme(
+    legend.position = "right")
+
+
+```
+
+For *A. staghorn*, the best-fit model is the null model which includes only the interaction between initial size and bleaching severity.
+
+#### 2.1.3.b. Figure 5: Acropora corymbose
+
+```{r}
+#| label: Acor surv preds
+#| echo: false
+#| message: false
+#| warning: false
+Acor_best_model <- model_results$Acor$null
+
+Acor_s_preds <- ggpredict(Acor_best_model, terms = "log_size [all], ", type = "fixed")
+
+Acor_s_preds2 <- ggpredict(Acor_best_model, terms = "bl_cat1 [no bleaching], ", type = "fixed")
+Acor_s_preds3 <- ggpredict(Acor_best_model, terms = "bl_cat1 [minor bleaching], ", type = "fixed")
+Acor_s_preds4 <- ggpredict(Acor_best_model, terms = "bl_cat1 [major bleaching], ", type = "fixed")
+Acor_s_preds5 <- ggpredict(Acor_best_model, terms = "bl_cat1 [fully bleached], ", type = "fixed")
+Acor_s_preds6 <- ggpredict(Acor_best_model, terms = "bl_cat1 [recent partial mortality], ", type = "fixed")
+Acor_s_preds1 <- rbind(Acor_s_preds2, Acor_s_preds3, Acor_s_preds4, Acor_s_preds5, Acor_s_preds6)
+
+
+```
+
+```{r}
+#| label: Acor surv figure
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 10
+#| fig-height: 8
+
+ggplot() +
+  geom_line(data = Acor_s_preds, 
+            aes(x = x, y = predicted), 
+            size = 1) +
+  # geom_point(data = surv_env_dat[surv_env_dat$Taxa == "Acor",],
+  #            aes(x = log_size,
+  #                y = Survival),
+  #            size = 2,
+  #            alpha = 0.2,
+  #            pch=21,
+  #            position = position_jitter(width = 0.1, height = 0.1)) +
+  geom_ribbon(data = Acor_s_preds,
+              aes(x = x,
+                  ymin = conf.low,
+                  ymax = conf.high),
+              alpha = 0.2,
+              inherit.aes = FALSE,
+              show.legend = FALSE) +
+  labs(x = "Initial size (log)",
+       y = "Survival probability") +
+  scale_y_continuous(breaks = seq(0, 1, by = 0.25),
+                     limits = c(0, 1)) +
+  theme_bw() +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12))
+
+
+ggplot(data = Acor_s_preds1, aes(x = x, y = predicted, fill = x)) +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.1, linewidth = 0.8) +
+  geom_point(size = 5, pch = 21, color = "black") +  
+  scale_fill_manual(values = colours_sev, name = "Bleaching Severity") +
+  scale_y_continuous(breaks = seq(0, 1, by = 0.25), limits = c(0, 1)) +
+  theme_bw() +
+  labs(x = "", y = "Survival Probability") +
+  theme(
+    legend.position = "none",
+    axis.text.x = element_blank()
+  ) +
+  scale_x_discrete(limits = levels(Acor_s_preds1$x))
+```
+
+For *A. corymbose*, the best-fit model only includes bleaching severity with an increasing negative effect on survival and initial size with a significant positive effect on survival probability. The effect of bleaching severity categories 'fully bleached' and 'recent partial mortality' are significantly different from the 'no bleaching' category.
+
+#### 2.1.3.c. Figure 6: Pocillopora damicornis
+
+```{r}
+#| label: Pdam surv preds
+#| echo: false
+#| message: false
+#| warning: false
+
+Pdam_best_model <- model_results$Pdam$null
+
+Pdam_s_preds1 <- ggpredict(Pdam_best_model, terms = "log_size [all], ", type = "fixed")
+
+Pdam_s_preds2 <- ggpredict(Pdam_best_model, terms = "bl_cat1 [no bleaching], ", type = "fixed")
+Pdam_s_preds3 <- ggpredict(Pdam_best_model, terms = "bl_cat1 [minor bleaching], ", type = "fixed")
+Pdam_s_preds4 <- ggpredict(Pdam_best_model, terms = "bl_cat1 [fully bleached], ", type = "fixed")
+Pdam_s_preds5 <- ggpredict(Pdam_best_model, terms = "bl_cat1 [recent partial mortality], ", type = "fixed")
+Pdam_s_preds <- rbind(Pdam_s_preds2, Pdam_s_preds3, Pdam_s_preds4, Pdam_s_preds5)
+```
+
+```{r}
+#| label: Pdam surv figure
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 10
+#| fig-height: 8
+
+colours_sev1 = c("#F0E442",  "#E69F00", "red", "black")
+
+ggplot() +
+  geom_line(data = Pdam_s_preds1, 
+            aes(x = x, y = predicted), 
+            size = 1) +
+  geom_ribbon(data = Pdam_s_preds1,
+              aes(x = x,
+                  ymin = conf.low,
+                  ymax = conf.high),
+              alpha = 0.2,
+              inherit.aes = FALSE,
+              show.legend = FALSE) +
+  labs(x = "Initial size (log)",
+       y = "Survival probability") +
+  scale_y_continuous(breaks = seq(0, 1, by = 0.25),
+                     limits = c(0, 1)) +
+  theme_bw() +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12))
+
+ggplot(data = Pdam_s_preds, aes(x = x, y = predicted, fill = x)) +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.1, linewidth = 0.8) +
+  geom_point(size = 5, pch = 21, color = "black") +  
+  scale_fill_manual(values = colours_sev1, name = "Bleaching Severity") +
+  scale_y_continuous(breaks = seq(0, 1, by = 0.25), limits = c(0, 1)) +
+  theme_bw() +
+  labs(x = "", y = "Survival Probability") +
+  theme(
+    legend.position = "none",
+    axis.text.x = element_blank()
+  ) +
+  scale_x_discrete(limits = levels(Pdam_s_preds$x))
+
+```
+
+For *P. damicornis*, the best-fit model includes initial size with a positive effect on survival and bleaching severity. Only the effect of 'recent partial mortality' category is significantly different from the 'no bleaching' category.
+
+#### 2.1.3.d. Figure 7: Pocillopora verrucosa
+
+```{r}
+#| label: Pver surv preds
+#| echo: false
+#| message: false
+#| warning: false
+
+Pver_best_model <- model_results$Pver$null
+Pver_s_preds1 <- ggpredict(Pver_best_model, terms = "log_size [all]", type = "fixed")
+Pver_s_preds2 <- ggpredict(Pver_best_model, terms = "bl_cat1 [no bleaching], ", type = "fixed")
+Pver_s_preds3 <- ggpredict(Pver_best_model, terms = "bl_cat1 [minor bleaching], ", type = "fixed")
+Pver_s_preds4 <- ggpredict(Pver_best_model, terms = "bl_cat1 [major bleaching], ", type = "fixed")
+Pver_s_preds5 <- ggpredict(Pver_best_model, terms = "bl_cat1 [fully bleached], ", type = "fixed")
+Pver_s_preds6 <- ggpredict(Pver_best_model, terms = "bl_cat1 [recent partial mortality], ", type = "fixed")
+Pver_s_preds <- rbind(Pver_s_preds2, Pver_s_preds3, Pver_s_preds4, Pver_s_preds5, Pver_s_preds6)
+```
+
+```{r}
+#| label: Pver surv figure
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 10
+#| fig-height: 8
+
+colours_sev = c("#F0E442",  "#E69F00", "#D55E00", "red", "black")
+
+ggplot() +
+  geom_line(data = Pver_s_preds1, 
+            aes(x = x, y = predicted), 
+            size = 1) +
+  geom_ribbon(data = Pver_s_preds1,
+              aes(x = x,
+                  ymin = conf.low,
+                  ymax = conf.high),
+              alpha = 0.2,
+              inherit.aes = FALSE,
+              show.legend = FALSE) +
+  labs(x = "Initial size (log)",
+       y = "Survival probability") +
+  scale_y_continuous(breaks = seq(0, 1, by = 0.25),
+                     limits = c(0, 1)) +
+  theme_bw() +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12))
+
+ggplot(data = Pver_s_preds, aes(x = x, y = predicted, fill = x)) +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.1, linewidth = 0.8) +
+  geom_point(size = 5, pch = 21, color = "black") +  
+  scale_fill_manual(values = colours_sev, name = "Bleaching Severity") +
+  scale_y_continuous(breaks = seq(0, 1, by = 0.25), limits = c(0, 1)) +
+  theme_bw() +
+  labs(x = "", y = "Survival Probability") +
+  theme(
+    legend.position = "none",
+    axis.text.x = element_blank()
+  ) +
+  scale_x_discrete(limits = levels(Pver_s_preds$x))
+```
+
+For *P. verrucosa*, the best-fit model includes initial size with a positive effect on survival and bleaching severity with increasing negative effect. The effect of bleaching severity 'fully bleached' and 'recent partial mortality' are significantly different from 'no bleaching'.
+
+#### 2.1.3.e. Figure 8: Seriatopora hystrix
+
+```{r}
+#| label: Shys surv preds
+#| echo: false
+shys_best_model <- model_results$Shys$only_temp
+Shys_s_preds <- ggpredict(shys_best_model, terms = c("log_size [all]", "bl_cat1"), type = "fixed") #average over temperature
+
+Shys_s_preds1 <- ggpredict(shys_best_model, terms = c("temp_mean_z [all]"), type = "fixed") #average over bleaching categories
+```
+
+```{r}
+#| label: Shys surv figure1
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 10
+#| fig-height: 8
+
+colours_sev = c("#F0E442",  "#E69F00", "#D55E00", "red", "black")
+
+ggplot() +
+  geom_line(data = Shys_s_preds, 
+            aes(x = x, y = predicted, color = group), 
+            size = 1) +
+  geom_ribbon(data = Shys_s_preds,
+              aes(x = x,
+                  ymin = conf.low,
+                  ymax = conf.high,
+                  fill = group),
+              alpha = 0.2,
+              inherit.aes = FALSE,
+              show.legend = FALSE) +
+  labs(x = "Initial size (log)",
+       y = "Survival probability",
+       color = "") +
+  scale_color_manual(values = colours_sev) +
+  scale_fill_manual(values = colours_sev) +
+  scale_y_continuous(breaks = seq(0, 1, by = 0.25),
+                     limits = c(0, 1)) +
+  theme_bw() +
+  theme(
+    legend.position = "right")
+
+ggplot(Shys_s_preds1, aes(x = x, y = predicted)) +
+  geom_line(size = 1.2, color = "#714674") +
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high), fill = "#FF99FF", alpha = 0.3) +
+  labs(
+    x = "Standardised Temperature",
+    y = "Survival Probability"
+  ) +
+  theme_bw()
+```
+
+```{r}
+#| label: Shys surv figure2
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 10
+#| fig-height: 8
+
+# ggplot() +
+#   geom_line(data = Shys_s0a_preds1, 
+#             aes(x = x, y = predicted), 
+#             size = 1) +
+#   geom_ribbon(data = Shys_s0a_preds1,
+#               aes(x = x,
+#                   ymin = conf.low,
+#                   ymax = conf.high),
+#               alpha = 0.2,
+#               inherit.aes = FALSE,
+#               show.legend = FALSE) +
+#   labs(x = "ubedmean",
+#        y = "Survival probability",
+#        color = "") +
+#   scale_y_continuous(breaks = seq(0, 1, by = 0.25),
+#                      limits = c(0, 1)) +
+#   theme_bw() +
+#   theme(
+#     legend.position = "right")
+```
+
+```{r}
+#| label: Shys surv figure3
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 10
+#| fig-height: 8
+# 
+# ggplot() +
+#   geom_line(data = Shys_s0c_preds2, 
+#             aes(x = x, y = predicted), 
+#             size = 1) +
+#   geom_ribbon(data = Shys_s0c_preds2,
+#               aes(x = x,
+#                   ymin = conf.low,
+#                   ymax = conf.high),
+#               alpha = 0.2,
+#               inherit.aes = FALSE,
+#               show.legend = FALSE) +
+#   labs(x = "Secchi mean",
+#        y = "Survival probability",
+#        color = "") +
+#   scale_y_continuous(breaks = seq(0, 1, by = 0.25),
+#                      limits = c(0, 1)) +
+#   theme_bw() +
+#   theme(
+#     legend.position = "right")
+```
+
+In summary, no environmental variables were retained in the best-fit models for Survival.
+
+## 2.2 Growth
+
+```{r}
+#| label: ReadData growth
+#| output: false
+#| echo: false
+#| eval: true
+#| warning: false
+#| message: false
+grow2 <- read_csv("C:/Users/jc815475/OneDrive - James Cook University/PhD data/3_Coral growth/Data/CSV/growth_transition2.csv", trim_ws=TRUE)
+```
+
+```{r}
+#| label: growth prep
+#| output: false
+#| echo: false
+#| eval: true
+#| warning: false
+#| message: false
+grow_2 <- grow2 |> 
+  mutate(Reef = factor(Reef),
+         Site = factor(Site),
+         Site_code = str_sub(Site, 1, 8),
+         Plot = factor(Plot),
+         Colony = factor(Colony),
+         Habitat = factor(Habitat),
+         Depth = factor(Depth),
+         Cross_shelf = factor(Cross_shelf),
+         Taxa = factor(Taxa))|> 
+  filter(Taxa %in% c("Abra", "Acor", "Pdam", "Pver", "Shys"))
+
+grow_2 <- grow_2 |> 
+  mutate(bl_cat1 = case_when(
+    is.na(Bleaching_scores)  ~ "no bleaching",
+    Bleaching_scores == 1   ~ "no bleaching",
+    Bleaching_scores == 2   ~ "minor bleaching",
+    Bleaching_scores == 3   ~ "major bleaching",
+    Bleaching_scores == 4   ~ "fully bleached",
+    Bleaching_scores == 5   ~ "recent partial mortality"
+  ))
+
+grow_2 <- grow_2 |> 
+  mutate(bl_cat2 = fct_recode(bl_cat1,
+                              `no bleaching` = "no bleaching",
+                              `partial bleaching` = "minor bleaching",
+                              `partial bleaching` = "major bleaching",
+                              `fully bleached` = "fully bleached",
+                              `recent partial mortality` = "recent partial mortality"))
+
+grow_2 <- grow_2 |> 
+  mutate(bl_cat2 = factor(bl_cat2, levels = c("no bleaching", "partial bleaching", "fully bleached", "recent partial mortality")))
+
+grow_2 <- grow_2 |> 
+  mutate(bl_cat1 = factor(bl_cat1, levels = c("no bleaching", "minor bleaching", "major bleaching", "fully bleached", "recent partial mortality")))
+```
+
+```{r}
+#| label: data prep growth2
+#| echo: false
+#| warning: false
+#| message: false
+
+# envdata <- read_csv("C:/Users/jc815475/OneDrive - James Cook University/PhD data/3_Coral growth/Data/CSV/All_environmental_data_EcoRRAP_sites.csv", trim_ws=TRUE)
+# 
+# envdata <- envdata |> 
+#   mutate(Zone = factor(Zone),
+#          Site.code = factor(Site.code))
+# envdata <- envdata |> 
+#   filter(! Zone == "F") |> 
+#   filter(! Zone == "B")
+# envdata <- envdata |> 
+#   mutate(Reef = str_sub(Site.code, 1, 4)) |> 
+#   mutate(Reef = factor(Reef))
+# envdat <- envdata |> 
+#   filter(Reef %in% c("OCCH", "OCDA", "OCLB", "PAOR", "PAPE"))
+# 
+# env <- envdat |> 
+#   select(Site.code, ubedmean, Secchi_mean, temp_mean)
+# env <- env |> rename(Site = Site.code)
+
+envdata <- read_csv("C:/Users/jc815475/OneDrive - James Cook University/PhD data/3_Coral growth/Data/CSV/envdata_2022-2023.csv", trim_ws=TRUE)
+env <- envdata |>
+  select(Site_code, ubedmean, Secchi_mean, temp_mean)
+env <- env |> rename(Site = Site_code)
+
+env <- env |> 
+  mutate(
+    ubedmean_z = scale(ubedmean)[,1],
+    Secchi_mean_z = scale(Secchi_mean)[,1],
+    temp_mean_z = scale(temp_mean)[,1]
+  )
+
+## merge datasets
+grow_env_dat <- merge(grow_2, env, by = "Site", all.x = TRUE)
+
+grow_env_dat <- grow_env_dat |> 
+  mutate(Taxa = factor(Taxa)) |> 
+  mutate(Site_code = str_sub(Site, 1, 8))
+
+## filter for NAs
+grow_env_dat <- grow_env_dat[complete.cases(grow_env_dat[, c("ubedmean_z", "Secchi_mean_z", "temp_mean_z")]), ]
+
+grow_env_dat |> 
+  group_by(Taxa) |> 
+  summarise(total_count = n())#lowest sample size is Pdam with 89 colonies
+```
+
+We fitted a separate model for each taxon, comparing log-transformed size at t0 (2022 pre-bleaching) versus size at t1 (2023). We selected three environmental variables based on exploratory data analyses and previous works on factors affecting coral growth rates in the context of bleaching. The environmental variables that were included alongside log-transformed size at t0 were water velocity, turbidity and temperature.
+
+### 2.2.1. Model fitting and selection
+
+Test random effect structure
+
+```{r}
+#| label: randon effect selection growth Abra
+Abra_g0 <- glmmTMB(log_2023 ~ log_2022 + log_2022:bl_cat1  +
+                (1|Reef/Site_code/Plot),
+              data = grow_env_dat[grow_env_dat$Taxa == "Abra",])
+
+Abra_g1 <- glmmTMB(log_2023 ~ log_2022 + log_2022:bl_cat1  +
+                (1|Reef/Site_code),
+              data = grow_env_dat[grow_env_dat$Taxa == "Abra",])
+
+Abra_g2 <- glmmTMB(log_2023 ~ log_2022 + log_2022:bl_cat1  +
+                (1|Site_code/Plot),
+              data = grow_env_dat[grow_env_dat$Taxa == "Abra",])
+
+Abra_g3 <- glmmTMB(log_2023 ~ log_2022 + log_2022:bl_cat1  +
+                (1|Site_code),
+              data = grow_env_dat[grow_env_dat$Taxa == "Abra",])
+
+```
+
+```{r}
+#| label: randon effect selection growth Abra AIC
+AIC(Abra_g0, Abra_g1, Abra_g2, Abra_g3) #best structure is 1|Site_code for Abra
+```
+
+```{r}
+#| label: randon effect selection growth Acor
+Acor_g0 <- glmmTMB(log_2023 ~ log_2022 + log_2022:bl_cat1  +
+                (1|Reef/Site_code/Plot),
+              data = grow_env_dat[grow_env_dat$Taxa == "Acor",])
+
+Acor_g1 <- glmmTMB(log_2023 ~ log_2022 + log_2022:bl_cat1  +
+                (1|Reef/Site_code),
+              data = grow_env_dat[grow_env_dat$Taxa == "Acor",])
+
+Acor_g2 <- glmmTMB(log_2023 ~ log_2022 + log_2022:bl_cat1  +
+                (1|Site_code/Plot),
+              data = grow_env_dat[grow_env_dat$Taxa == "Acor",])
+
+Acor_g3 <- glmmTMB(log_2023 ~ log_2022 + log_2022:bl_cat1  +
+                (1|Site_code),
+              data = grow_env_dat[grow_env_dat$Taxa == "Acor",])
+
+```
+
+```{r}
+#| label: randon effect selection growth Acor AIC
+AIC(Acor_g0, Acor_g1, Acor_g2, Acor_g3) #best structure is 1|Site_code for Acor
+```
+
+```{r}
+#| label: randon effect selection growth Pdam
+Pdam_g0 <- glmmTMB(log_2023 ~ log_2022 + log_2022:bl_cat1  +
+                (1|Reef/Site_code/Plot),
+              data = grow_env_dat[grow_env_dat$Taxa == "Pdam",])
+
+Pdam_g1 <- glmmTMB(log_2023 ~ log_2022 + log_2022:bl_cat1  +
+                (1|Reef/Site_code),
+              data = grow_env_dat[grow_env_dat$Taxa == "Pdam",])
+
+Pdam_g2 <- glmmTMB(log_2023 ~ log_2022 + log_2022:bl_cat1  +
+                (1|Site_code/Plot),
+              data = grow_env_dat[grow_env_dat$Taxa == "Pdam",])
+
+Pdam_g3 <- glmmTMB(log_2023 ~ log_2022 + log_2022:bl_cat1  +
+                (1|Site_code),
+              data = grow_env_dat[grow_env_dat$Taxa == "Pdam",])
+
+```
+
+```{r}
+#| label: randon effect selection growth Pdam AIC
+AICc(Pdam_g0, Pdam_g1, Pdam_g2, Pdam_g3) #best structure is 1|Site_code for Pdam
+```
+
+```{r}
+#| label: randon effect selection growth Pver
+Pver_g0 <- glmmTMB(log_2023 ~ log_2022 + log_2022:bl_cat1  +
+                (1|Reef/Site_code/Plot),
+              data = grow_env_dat[grow_env_dat$Taxa == "Pver",])
+
+Pver_g1 <- glmmTMB(log_2023 ~ log_2022 + log_2022:bl_cat1  +
+                (1|Reef/Site_code),
+              data = grow_env_dat[grow_env_dat$Taxa == "Pver",])
+
+Pver_g2 <- glmmTMB(log_2023 ~ log_2022 + log_2022:bl_cat1  +
+                (1|Site_code/Plot),
+              data = grow_env_dat[grow_env_dat$Taxa == "Pver",])
+
+Pver_g3 <- glmmTMB(log_2023 ~ log_2022 + log_2022:bl_cat1  +
+                (1|Site_code),
+              data = grow_env_dat[grow_env_dat$Taxa == "Pver",])
+
+```
+
+```{r}
+#| label: randon effect selection growth Pver AIC
+AICc(Pver_g0, Pver_g1, Pver_g2, Pver_g3) #best structure is 1|Site_code for Pver
+```
+
+```{r}
+#| label: randon effect selection growth Shys
+Shys_g0 <- glmmTMB(log_2023 ~ log_2022 + log_2022:bl_cat1  +
+                (1|Reef/Site_code/Plot),
+              data = grow_env_dat[grow_env_dat$Taxa == "Shys",])
+
+Shys_g1 <- glmmTMB(log_2023 ~ log_2022 + log_2022:bl_cat1  +
+                (1|Reef/Site_code),
+              data = grow_env_dat[grow_env_dat$Taxa == "Shys",])
+
+Shys_g2 <- glmmTMB(log_2023 ~ log_2022 + log_2022:bl_cat1  +
+                (1|Site_code/Plot),
+              data = grow_env_dat[grow_env_dat$Taxa == "Shys",])
+
+Shys_g3 <- glmmTMB(log_2023 ~ log_2022 + log_2022:bl_cat1  +
+                (1|Site_code),
+              data = grow_env_dat[grow_env_dat$Taxa == "Shys",])
+
+```
+
+```{r}
+#| label: randon effect selection growth Shys AIC
+AICc(Shys_g0, Shys_g1, Shys_g2, Shys_g3) #best structure is 1|Site_code for Shys
+```
+
+Random effect structure is (1\|Site_code) for all taxa. We are going to test the different models below:
+
+Full model: log_2023 \~ log_2022 + log_2022:bl_cat2 + log_2022:Secchi_mean + log_2022:ubedmean + log_2022:temp_mean + log_2022:Secchi_mean:bl_cat + log_2022:ubedmean:bl_cat2 + log_2022:temp_mean:bl_cat2 + (1\|Site_code)
+
+Intermediate models:
+
+-   no water clarity: log_2023 \~ log_2022 + log_2022:bl_cat2 + log_2022:ubedmean + log_2022:temp_mean + log_2022:ubedmean:bl_cat2 + log_2022:temp_mean:bl_cat2 + (1\|Site_code)
+
+-   no water velocity: log_2023 \~ log_2022 + log_2022:bl_cat2 + log_2022:Secchi_mean + log_2022:temp_mean + log_2022:Secchi_mean:bl_cat + log_2022:temp_mean:bl_cat2 + (1\|Site_code)
+
+-   no temperature: log_2023 \~ log_2022 + log_2022:bl_cat2 + log_2022:Secchi_mean + log_2022:ubedmean + log_2022:Secchi_mean:bl_cat + log_2022:ubedmean:bl_cat2 + (1\|Site_code)
+
+-   only water clarity: log_2023 \~ log_2022 + log_2022:bl_cat2 + log_2022:Secchi_mean + log_2022:Secchi_mean:bl_cat2 + (1\|Site_code)
+
+-   only water velocity: log_2023 \~ log_2022 + log_2022:bl_cat2 + log_2022:ubedmean + log_2022:ubedmean:bl_cat2 + (1\|Site_code)
+
+-   only temperature: log_2023 \~ log_2022 + log_2022:bl_cat2 + log_2022:temp_mean + log_2022:temp_mean:bl_cat2 + (1\|Site_code)
+
+-   no interaction bleaching x environment: log_2023 \~ log_2022 + log_2022:bl_cat2 + log_2022:Secchi_mean + log_2022:ubedmean + log_2022:temp_mean + (1\|Site_code)
+
+Null model: log_2023 \~ log_2022 + log_2022:bl_cat2 + (1 \| Site_code)
+
+```{r}
+#| label: model 3.1 formulas
+#| echo: false
+#| message: false
+#| warning: false 
+
+growth_formulas <- list(
+  full      = log_2023 ~ log_2022 + log_2022:bl_cat1 + log_2022:Secchi_mean_z + log_2022:ubedmean_z + log_2022:temp_mean_z +
+              log_2022:Secchi_mean_z:bl_cat1 + log_2022:ubedmean_z:bl_cat1 + log_2022:temp_mean_z:bl_cat1 + (1 | Site_code),
+  
+  no_clarity = log_2023 ~ log_2022 + log_2022:bl_cat1 + log_2022:ubedmean_z + log_2022:temp_mean_z +
+               log_2022:ubedmean_z:bl_cat1 + log_2022:temp_mean_z:bl_cat1 + (1 | Site_code),
+  
+  no_velocity = log_2023 ~ log_2022 + log_2022:bl_cat1 + log_2022:Secchi_mean_z + log_2022:temp_mean_z +
+                log_2022:Secchi_mean_z:bl_cat1 + log_2022:temp_mean_z:bl_cat1 + (1 | Site_code),
+  
+  no_temp = log_2023 ~ log_2022 + log_2022:bl_cat1 + log_2022:Secchi_mean_z + log_2022:ubedmean_z +
+            log_2022:Secchi_mean_z:bl_cat1 + log_2022:ubedmean_z:bl_cat1 + (1 | Site_code),
+  
+  only_clarity = log_2023 ~ log_2022 + log_2022:bl_cat1 + log_2022:Secchi_mean_z +
+                 log_2022:Secchi_mean_z:bl_cat1 + (1 | Site_code),
+  
+  only_velocity = log_2023 ~ log_2022 + log_2022:bl_cat1 + log_2022:ubedmean_z +
+                  log_2022:ubedmean_z:bl_cat1 + (1 | Site_code),
+  
+  only_temp = log_2023 ~ log_2022 + log_2022:bl_cat1 + log_2022:temp_mean_z +
+              log_2022:temp_mean_z:bl_cat1 + (1 | Site_code),
+  
+  additive_env = log_2023 ~ log_2022 + log_2022:bl_cat1 + log_2022:Secchi_mean_z + log_2022:ubedmean_z + log_2022:temp_mean_z + (1 | Site_code),
+  
+  null = log_2023 ~ log_2022 + log_2022:bl_cat1 + (1 | Site_code)
+)
+
+```
+
+```{r}
+#| label: model 3.1 prep cont.
+#| echo: false
+#| message: false
+#| warning: false 
+
+#remove obvious outliers
+grow_env_dat <- grow_env_dat |> filter(!Colony == "OCDA_LA2S_P4_2927")
+
+taxa_list <- c("Abra", "Acor", "Pdam", "Pver", "Shys")
+datasets <- lapply(taxa_list, function(taxon) {
+  df <- grow_env_dat[grow_env_dat$Taxa == taxon, ]
+  df$bl_cat1 <- relevel(df$bl_cat1, ref = "no bleaching")
+  df$bl_cat2 <- relevel(df$bl_cat2, ref = "no bleaching")
+  return(df)
+})
+names(datasets) <- taxa_list
+
+```
+
+```{r}
+#| label: model 3.1 loop
+#| echo: false
+#| message: false
+#| warning: false 
+
+results <- list()
+
+for (taxon_name in names(datasets)) {
+  taxon_data <- datasets[[taxon_name]]
+  taxon_results <- list()
+  
+  for (model_name in names(growth_formulas)) {
+    formula <- growth_formulas[[model_name]]
+    model <- glmmTMB(formula, data = taxon_data)
+    taxon_results[[model_name]] <- model
+  }
+  
+  results[[taxon_name]] <- taxon_results
+}
+
+
+```
+
+```{r}
+#| label: models 3.1 AIC
+#| echo: false
+aic_results <- lapply(results, function(taxon_models) {
+  sapply(taxon_models, function(m) {
+    if (!is.null(m) && !inherits(m, "try-error")) AICc(m) else NA
+  })
+})
+```
+
+```{r}
+#| label: models 3.1 Print sorted AIC Results
+#| echo: false
+
+for (taxon in names(aic_results)) {
+  cat("\n--- AICc Results for", taxon, "---\n")
+  print(sort(aic_results[[taxon]]))  # sorts from best (lowest AIC) to worst
+}
+```
+
+The model "only_temp" was the best-fit model for Abra, Pver and Shys. The "additive_env" model was the best-fit model for Acor and the null model was the best-fit model for Pdam.
+
+```{r}
+#| label: models 3.1 select best models
+Abra_best_mod <- results$Abra$only_temp
+Acor_best_mod <- results$Acor$additive_env
+Pdam_best_mod <- results$Pdam$null
+Pver_best_mod <- results$Pver$only_temp
+Shys_best_mod <- results$Shys$only_temp
+```
+
+### 2.2.2. Model summary and diagnostics
+
+```{r}
+#|label: residuals growth Abra
+
+best_models <- list(
+  Abra = results$Abra$only_temp,
+  Acor = results$Acor$additive_env,
+  Pdam = results$Pdam$null,
+  Pver = results$Pver$only_temp,
+  Shys = results$Shys$only_temp
+)
+
+
+sim_residuals <- list()
+dispersion_tests <- list()
+collinearity_checks <- list()
+
+for(taxon in names(best_models)) {
+  cat("Running diagnostics for", taxon, "...\n")
+  
+  model <- best_models[[taxon]]
+  
+  # Simulate residuals and plot
+  sim_res <- simulateResiduals(model, plot = TRUE)
+  sim_residuals[[taxon]] <- sim_res
+  
+  # Test dispersion
+  disp_test <- testDispersion(sim_res)
+  dispersion_tests[[taxon]] <- disp_test
+  
+  # Check collinearity
+  collin <- check_collinearity(model)
+  collinearity_checks[[taxon]] <- collin
+  
+  print(disp_test)
+  print(collin)
+  cat("\n-----------------------\n")
+}
+
+```
+
+High variance inflation factors (VIFs \> 90) were observed for higher-order interaction terms in Pver and Shys, likely due to low sample size in certain bleaching categories. We retained these terms to maintain model comparability, but interpret results from these interactions with caution.
+
+### 2.2.3. Summary figures
+
+#### 2.2.3.a. Figure 4: Acropora staghorn
+
+```{r}
+#| label: abra summary
+#| echo: false
+summary(Abra_best_mod)
+```
+
+The best-fit model for *A. staghorn* included water temperature interacting with initial size and bleaching severity. Only the categories 'fully bleached' and 'recent partial mortality' showed significance indicating that corals in these categories are significantly different from the 'no bleaching' category and have a stronger relationship with water temperature when considering initial size.
+
+```{r}
+#| label: Abra preds
+#| echo: false
+#| warning: false
+#| message: false
+
+# effect of bleaching severity
+Abra_g_preds0 <- ggpredict(Abra_best_mod, terms = c("log_2022 [all]", "bl_cat1 [no bleaching]"), type = "fixed")
+Abra_g_preds1 <- ggpredict(Abra_best_mod, terms = c("log_2022 [all]", "bl_cat1 [minor bleaching]"), type = "fixed")
+Abra_g_preds2 <- ggpredict(Abra_best_mod, terms = c("log_2022 [all]", "bl_cat1 [major bleaching]"), type = "fixed")
+Abra_g_preds3 <- ggpredict(Abra_best_mod, terms = c("log_2022 [all]", "bl_cat1 [fully bleached]"), type = "fixed")
+Abra_g_preds4 <- ggpredict(Abra_best_mod, terms = c("log_2022 [all]", "bl_cat1 [recent partial mortality]"), type = "fixed")
+
+Abra_g_predsa <- rbind(Abra_g_preds0, Abra_g_preds1, Abra_g_preds2, Abra_g_preds3, Abra_g_preds4)
+
+# combined effect of bleaching severity and water temperature
+Abra_g_preds5 <- ggpredict(Abra_best_mod, terms = c("log_2022 [all]", "temp_mean_z [-1, 0, 1]", "bl_cat1 [no bleaching]"), type = "fixed")
+Abra_g_preds6 <- ggpredict(Abra_best_mod, terms = c("log_2022 [all]", "temp_mean_z [-1, 0, 1]", "bl_cat1 [minor bleaching]"), type = "fixed")
+Abra_g_preds7 <- ggpredict(Abra_best_mod, terms = c("log_2022 [all]", "temp_mean_z [-1, 0, 1]", "bl_cat1 [major bleaching]"), type = "fixed")
+Abra_g_preds8 <- ggpredict(Abra_best_mod, terms = c("log_2022 [all]", "temp_mean_z [-1, 0, 1]", "bl_cat1 [fully bleached]"), type = "fixed")
+Abra_g_preds9 <- ggpredict(Abra_best_mod, terms = c("log_2022 [all]", "temp_mean_z [-1, 0, 1]", "bl_cat1 [recent partial mortality]"), type = "fixed")
+
+Abra_g_predsb <- rbind(Abra_g_preds5, Abra_g_preds6, Abra_g_preds7, Abra_g_preds8, Abra_g_preds9)
+
+# Replace these with actual mean and sd from grow_env_dat$temp_mean
+temp_mean <- mean(grow_env_dat$temp_mean, na.rm = TRUE)
+temp_sd <- sd(grow_env_dat$temp_mean, na.rm = TRUE)
+
+# Translate z-scores to real temperatures
+z_to_real <- function(z) round(temp_mean + z * temp_sd, 2)
+
+Abra_g_predsb$temperature_c <- z_to_real(as.numeric(as.character(Abra_g_predsb$group)))
+```
+
+```{r}
+#| label: Abra growth fig
+#| echo: false
+#| fig-width: 12
+#| fig-height: 8
+#| warning: false
+#| message: false
+
+colours_sev <- c("#F0E442",  "#E69F00", "#D55E00", "red", "black")
+colours_temp <- c("#714674", "#FF99FF", "#FAAE7B")
+
+# effect of bleaching severity
+ggplot() +
+  geom_abline(intercept = 0, 
+              slope = 1, 
+              linetype = "dashed", 
+              color = "grey50", 
+              size = 1) +
+  geom_line(data = Abra_g_predsa, 
+            aes(x = x, y = predicted, color = group), 
+            size = 1) +
+  geom_ribbon(data = Abra_g_predsa,
+              aes(x = x,
+                  ymin = conf.low,
+                  ymax = conf.high,
+                  fill = group),
+              alpha = 0.2,
+              inherit.aes = FALSE,
+              show.legend = FALSE) +
+  labs(x = "Colony size in 2022 (log)",
+       y = "Colony size in 2023 (log)") +
+  scale_color_manual(values = colours_sev) +
+  scale_fill_manual(values = colours_sev) +
+  scale_x_continuous(breaks = seq(2, 12, by = 2),
+                     limits = c(2, 12)) +
+  scale_y_continuous(breaks = seq(2, 12, by = 2),
+                     limits = c(2, 12)) +
+  theme_bw() +
+  theme(
+    legend.position = "bottom",
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12))
+
+# Effect of water temperature and bleaching severity
+ggplot() +
+  geom_abline(intercept = 0, 
+              slope = 1, 
+              linetype = "dashed", 
+              color = "grey50", 
+              size = 1) +
+  geom_line(data = Abra_g_predsb, 
+            aes(x = x, y = predicted, color = factor(temperature_c)), 
+            size = 1) +
+  geom_ribbon(data = Abra_g_predsb,
+              aes(x = x,
+                  ymin = conf.low,
+                  ymax = conf.high,
+                  fill = factor(temperature_c)),
+              alpha = 0.2,
+              inherit.aes = FALSE,
+              show.legend = FALSE) +
+  facet_wrap(~facet) +
+  labs(x = "",
+       y = "",
+       color = "") +
+  scale_color_manual(values = colours_temp) +
+  scale_fill_manual(values = colours_temp) +
+  scale_x_continuous(breaks = seq(2, 12, by = 2),
+                     limits = c(2, 12)) +
+  scale_y_continuous(breaks = seq(2, 12, by = 2),
+                     limits = c(2, 13)) +
+  theme_bw() +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12))
+```
+
+```{r}
+#| label: Abra growth zero crossings
+#| echo: false
+Abra_g_predsb$diff <- Abra_g_predsb$predicted - Abra_g_predsb$x
+Abra_zero_crossings <- Abra_g_predsb |>
+  group_by(facet, group) |>
+  arrange(abs(diff)) |>  
+  slice(1)                
+```
+
+#### 2.2.3.b. Figure 5: Acropora corymbose
+
+```{r}
+#| label: acor summary
+#| echo: false
+summary(Acor_best_mod)
+```
+
+The best-fit model for *A. corymbose* included the interactions between initial size and bleaching category. Only the categories 'major bleaching' and 'recent partial mortality' were significantly different from 'no bleaching' category. The interaction between initial size and water velocity was also significant (negative effect).
+
+```{r}
+#| label: Acor preds
+#| echo: false
+#| warning: false
+#| message: false
+
+# Predicted effects of size across bleaching categories
+Acor_g_preds0 <- ggpredict(Acor_best_mod, terms = c("log_2022 [all]", "bl_cat1 [no bleaching]"), type = "fixed")
+Acor_g_preds1 <- ggpredict(Acor_best_mod, terms = c("log_2022 [all]", "bl_cat1 [minor bleaching]"), type = "fixed")
+Acor_g_preds2 <- ggpredict(Acor_best_mod, terms = c("log_2022 [all]", "bl_cat1 [major bleaching]"), type = "fixed")
+Acor_g_preds3 <- ggpredict(Acor_best_mod, terms = c("log_2022 [all]", "bl_cat1 [fully bleached]"), type = "fixed")
+Acor_g_preds4 <- ggpredict(Acor_best_mod, terms = c("log_2022 [all]", "bl_cat1 [recent partial mortality]"), type = "fixed")
+
+Acor_g_predsa <- rbind(Acor_g_preds0, Acor_g_preds1, Acor_g_preds2, Acor_g_preds3, Acor_g_preds4)
+
+# Use z-values of -1, 0, 1 to represent low, average, high velocity
+Acor_g_preds_ubed <- ggpredict(
+  Acor_best_mod,
+  terms = c("log_2022 [all]", "ubedmean_z [-1, 0, 1]", "bl_cat1 [no bleaching]"), 
+  type = "fixed"
+)
+```
+
+```{r}
+#| label: Acor growth velocity fig
+#| echo: false
+#| warning: false
+#| message: false
+
+colours_velo <- c("#5EA8FF", "#2066CC", "#0B3D91")
+
+# Convert to numeric and label
+Acor_g_preds_ubed$ubed_velocity <- factor(Acor_g_preds_ubed$group, 
+                                          labels = c("Low", "Mean", "High"))
+
+ggplot(Acor_g_preds_ubed, aes(x = x, y = predicted, color = ubed_velocity)) +
+  geom_line(size = 1) +
+  geom_abline(intercept = 0, 
+              slope = 1, 
+              linetype = "dashed", 
+              color = "grey50", 
+              size = 1) +
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high, fill = ubed_velocity), alpha = 0.2, color = NA) +
+  labs(
+    x = "log(Size at t₀)",
+    y = "Predicted log(Size at t₁)"
+    # color = "Mean velocity (m/s)",
+    # fill = "Mean velocity (m/s)",
+  ) +
+  scale_color_manual(values = colours_velo) +
+  scale_fill_manual(values = colours_velo) +
+  scale_x_continuous(breaks = seq(2, 10, by = 2), limits = c(2, 9)) +
+  scale_y_continuous(breaks = seq(2, 10, by = 2), limits = c(2, 9)) +
+  theme_bw() +
+  theme(
+     legend.position = "none",
+    # legend.justification = c("left", "top"),
+    # #legend.background = element_rect(fill = "white", color = "black"),
+    # legend.title = element_text(size = 12),
+    # legend.text = element_text(size = 10),
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12))
+```
+
+```{r}
+#| label: Acor growth bl fig
+#| echo: false
+#| warning: false
+#| message: false
+
+colours_sev <- c("#F0E442",  "#E69F00", "#D55E00", "red", "black")
+
+ggplot() +
+  geom_abline(intercept = 0, 
+              slope = 1, 
+              linetype = "dashed", 
+              color = "grey50", 
+              size = 1) +
+  geom_line(data = Acor_g_predsa, 
+            aes(x = x, y = predicted, color = group), 
+            size = 1) +
+  geom_ribbon(data = Acor_g_predsa,
+              aes(x = x,
+                  ymin = conf.low,
+                  ymax = conf.high,
+                  fill = group),
+              alpha = 0.2,
+              inherit.aes = FALSE,
+              show.legend = FALSE) +
+  labs(x = "Colony size in 2022 (log)",
+       y = "Colony size in 2023 (log)") +
+  scale_color_manual(values = colours_sev) +
+  scale_fill_manual(values = colours_sev) +
+  scale_x_continuous(breaks = seq(2, 9, by = 2),
+                     limits = c(2, 9)) +
+  scale_y_continuous(breaks = seq(2, 9, by = 2),
+                     limits = c(2, 9)) +
+  theme_bw() +
+  theme(
+    legend.position = "bottom",
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12))
+```
+
+#### 2.2.3.c. Figure 6: Pocillopora damicornis
+
+```{r}
+#| label: pdam summary
+#| echo: false
+summary(Pdam_best_mod)
+```
+
+The best-fit model for *P. damicornis* included initial size interacting bleaching severity. Only the category 'recent partial mortality' was significantly different from 'no bleaching'.
+
+```{r}
+#| label: Pdam preds
+#| echo: false
+#| warning: false
+#| message: false
+
+Pdam_g_preds2a <- ggpredict(Pdam_best_mod, terms = c("log_2022 [all]", "bl_cat1 [no bleaching]"), type = "fixed")
+Pdam_g_preds2b <- ggpredict(Pdam_best_mod, terms = c("log_2022 [all]", "bl_cat1 [minor bleaching]"), type = "fixed")
+Pdam_g_preds2c <- ggpredict(Pdam_best_mod, terms = c("log_2022 [all]", "bl_cat1 [major bleaching]"), type = "fixed")
+Pdam_g_preds2d <- ggpredict(Pdam_best_mod, terms = c("log_2022 [all]", "bl_cat1 [fully bleached]"), type = "fixed")
+Pdam_g_preds2e <- ggpredict(Pdam_best_mod, terms = c("log_2022 [all]", "bl_cat1 [recent partial mortality]"), type = "fixed")
+
+Pdam_g_preds2 <- rbind(Pdam_g_preds2a, Pdam_g_preds2b, Pdam_g_preds2c, Pdam_g_preds2d, Pdam_g_preds2e)
+```
+
+```{r}
+#| label: Pdam growth fig
+#| echo: false
+#| fig-width: 12
+#| fig-height: 8
+#| warning: false
+#| message: false
+
+ggplot() +
+  geom_abline(intercept = 0, 
+              slope = 1, 
+              linetype = "dashed", 
+              color = "grey50", 
+              size = 1) +
+  geom_line(data = Pdam_g_preds2, 
+            aes(x = x, y = predicted, color = group), 
+            size = 1) +
+  geom_ribbon(data = Pdam_g_preds2,
+              aes(x = x,
+                  ymin = conf.low,
+                  ymax = conf.high,
+                  fill = group),
+              alpha = 0.2,
+              inherit.aes = FALSE,
+              show.legend = FALSE) +
+  labs(x = "Colony size in 2022 (log)",
+       y = "Colony size in 2023 (log)",
+       color = "") +
+  scale_color_manual(values = colours_sev) +
+  scale_fill_manual(values = colours_sev) +
+  scale_x_continuous(breaks = seq(2, 9, by = 2), limits = c(2, 9)) +
+  scale_y_continuous(breaks = seq(2, 9, by = 2), limits = c(2, 9)) +
+  theme_bw() +
+  theme(
+    # legend.position = c(0.1, 0.75),
+    legend.position = "none",
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12))
+
+```
+
+The best-fit model for *P. damicornis* was the null model including only the interaction between initial size and bleaching severity. Only the category "recent partial mortality" was significant but note there was only 4 colonies in this category.
+
+#### 2.2.3.d. Figure 7: Pocillopora verrucosa
+
+```{r}
+#| label: pver summary
+#| echo: false
+summary(Pver_best_mod)
+```
+
+The best-fit model for *P. verrucosa* included mean water temperature interacting with initial size and bleaching severity. The three-way interaction between initial size, mean temp and bleaching severity categories 'fully bleached' and 'recent partial mortality' were significant, however there were only 2 out of 207 colonies in the 'recent partial mortality' category so we believe these results are not reliable.
+
+```{r}
+#| label: Pver preds
+#| echo: false
+#| warning: false
+#| message: false
+# effect of bleaching severity
+Pver_g_preds0 <- ggpredict(Pver_best_mod, terms = c("log_2022 [all]", "bl_cat1 [no bleaching]"), type = "fixed")
+Pver_g_preds1 <- ggpredict(Pver_best_mod, terms = c("log_2022 [all]", "bl_cat1 [minor bleaching]"), type = "fixed")
+Pver_g_preds3 <- ggpredict(Pver_best_mod, terms = c("log_2022 [all]", "bl_cat1 [fully bleached]"), type = "fixed") #excludes recent partial mortality category as there are only 2 colonies in it and predictions are unreliable
+
+Pver_g_predsa <- rbind(Pver_g_preds0, Pver_g_preds1, Pver_g_preds3)
+
+# combined effect of bleaching severity and water temperature
+Pver_g_preds5 <- ggpredict(Pver_best_mod, terms = c("log_2022 [all]", "temp_mean_z [-1, 0, 1]", "bl_cat1 [no bleaching]"), type = "fixed")
+Pver_g_preds6 <- ggpredict(Pver_best_mod, terms = c("log_2022 [all]", "temp_mean_z [-1, 0, 1]", "bl_cat1 [minor bleaching]"), type = "fixed")
+Pver_g_preds8 <- ggpredict(Pver_best_mod, terms = c("log_2022 [all]", "temp_mean_z [-1, 0, 1]", "bl_cat1 [fully bleached]"), type = "fixed")
+
+Pver_g_predsb <- rbind(Pver_g_preds5, Pver_g_preds6, Pver_g_preds8)
+
+# Replace these with actual mean and sd from grow_env_dat$temp_mean
+temp_mean <- mean(grow_env_dat$temp_mean, na.rm = TRUE)
+temp_sd <- sd(grow_env_dat$temp_mean, na.rm = TRUE)
+
+# Translate z-scores to real temperatures
+z_to_real <- function(z) round(temp_mean + z * temp_sd, 2)
+
+Pver_g_predsb$temperature_c <- z_to_real(as.numeric(as.character(Pver_g_predsb$group)))
+```
+
+```{r}
+#| label: Pver growth fig
+#| echo: false
+#| fig-width: 12
+#| fig-height: 10
+#| warning: false
+#| message: false
+
+colours_sev2 <- c("#F0E442",  "#E69F00", "red")
+colours_temp <- c("#714674", "#FF99FF", "#FAAE7B")
+
+# effect of bleaching severity
+ggplot() +
+  geom_abline(intercept = 0, 
+              slope = 1, 
+              linetype = "dashed", 
+              color = "grey50", 
+              size = 1) +
+  geom_line(data = Pver_g_predsa, 
+            aes(x = x, y = predicted, color = group), 
+            size = 1) +
+  geom_ribbon(data = Pver_g_predsa,
+              aes(x = x,
+                  ymin = conf.low,
+                  ymax = conf.high,
+                  fill = group),
+              alpha = 0.2,
+              inherit.aes = FALSE,
+              show.legend = FALSE) +
+  labs(x = "Colony size in 2022 (log)",
+       y = "Colony size in 2023 (log)") +
+  scale_color_manual(values = colours_sev2) +
+  scale_fill_manual(values = colours_sev2) +
+  scale_x_continuous(breaks = seq(3, 8, by = 2),
+                     limits = c(3, 8)) +
+  scale_y_continuous(breaks = seq(3, 8, by = 2),
+                     limits = c(3, 8)) +
+  theme_bw() +
+  theme(
+    legend.position = "bottom",
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12))
+```
+
+```{r}
+#| label: Pver growth zero crossings
+#| echo: false
+Pver_g_predsa$diff <- Pver_g_predsa$predicted - Pver_g_predsa$x
+zero_crossings <- Pver_g_predsa |>
+  group_by(facet, group) |>
+  arrange(abs(diff)) |>  
+  slice(1)                
+```
+
+#### 2.2.3.e. Figure 8: Seriatopora hystrix
+
+```{r}
+#| label: shys summary
+#| echo: false
+summary(Shys_best_mod)
+```
+
+The best-fit model for *S. hystrix* included mean temperature interacting with initial size and bleaching severity. The three-way interaction between initial size, mean temperature and bleaching severity category was significant for the 'major bleaching' and 'fully bleached' categories.
+
+```{r}
+#| label: Shys preds
+#| echo: false
+#| warning: false
+#| message: false
+library(ggeffects)
+
+# Generate predictions across size and temperature for each bleaching level
+Shys_g_preds0 <- ggpredict(Shys_best_mod, terms = c("log_2022 [all]", "temp_mean_z [-1,0,1]", "bl_cat1 [no bleaching]"), type = "fixed")
+Shys_g_preds1 <- ggpredict(Shys_best_mod, terms = c("log_2022 [all]", "temp_mean_z [-1,0,1]", "bl_cat1 [minor bleaching]"), type = "fixed")
+Shys_g_preds2 <- ggpredict(Shys_best_mod, terms = c("log_2022 [all]", "temp_mean_z [-1,0,1]", "bl_cat1 [major bleaching]"), type = "fixed")
+Shys_g_preds3 <- ggpredict(Shys_best_mod, terms = c("log_2022 [all]", "temp_mean_z [-1,0,1]", "bl_cat1 [fully bleached]"), type = "fixed")
+Shys_g_preds4 <- ggpredict(Shys_best_mod, terms = c("log_2022 [all]", "temp_mean_z [-1,0,1]", "bl_cat1 [recent partial mortality]"), type = "fixed")
+
+Shys_g_preds <- dplyr::bind_rows(
+  Shys_g_preds0,
+  Shys_g_preds1,
+  Shys_g_preds2,
+  Shys_g_preds3,
+  Shys_g_preds4
+)
+```
+
+```{r}
+#| label: Pver growth fig
+#| echo: false
+#| fig-width: 12
+#| fig-height: 10
+#| warning: false
+#| message: false
+
+colours_temp <- c("#714674", "#FF99FF", "#FAAE7B")
+
+ggplot() +
+  geom_abline(intercept = 0, 
+              slope = 1, 
+              linetype = "dashed", 
+              color = "grey50", 
+              size = 1) +
+  geom_line(data = Shys_g_preds, 
+            aes(x = x, y = predicted, color = group), 
+            size = 1) +
+  geom_ribbon(data = Shys_g_preds,
+              aes(x = x,
+                  ymin = conf.low,
+                  ymax = conf.high,
+                  fill = group),
+              alpha = 0.2,
+              inherit.aes = FALSE,
+              show.legend = FALSE) +
+  facet_wrap(~facet, scales = "free") +
+  labs(x = "Colony size in 2022 (log)",
+       y = "",
+       color = "mean temp (C)") +
+  scale_color_manual(values = colours_temp) +
+  scale_fill_manual(values = colours_temp) +
+    scale_x_continuous(breaks = seq(2, 8, by = 2), limits = c(2, 8)) +
+  scale_y_continuous(breaks = seq(2, 8, by = 2), limits = c(1, 10)) +
+  theme_bw() +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12))
+
+Shys_g_plotA + Shys_g_plotC+ plot_layout(nrow = 2)
+```
+
+```{r}
+#| label: Shys growth zero crossings
+#| echo: false
+Shys_g_preds$diff <- Shys_g_preds$predicted - Shys_g_preds$x
+shys_zero_crossings <- Shys_g_preds |>
+  group_by(facet, group) |>
+  arrange(abs(diff)) |>  
+  slice(1)                
+```
+
+# 3. Supplementary analyses
+
+
+```{r}
+#| label: ReadData survival
+#| output: false
+#| echo: false
+#| eval: true
+#| warning: false
+#| message: false
+surv2 <- read_csv("C:/Users/jc815475/OneDrive - James Cook University/PhD data/3_Coral growth/Data/CSV/survival_transition2.csv", trim_ws=TRUE)
+```
+
+```{r}
+#| label: survival prep
+#| output: false
+#| echo: false
+#| eval: true
+#| warning: false
+#| message: false
+surv_2 <- surv2 |> 
+  mutate(Reef = factor(Reef),
+         Site = factor(Site),
+         Plot = factor(Plot),
+         Colony = factor(Colony),
+         Habitat = factor(Habitat),
+         Depth = factor(Depth),
+         Cross_shelf = factor(Cross_shelf),
+         Taxa = factor(Taxa))|> 
+  filter(Taxa %in% c("Abra", "Acor", "Pdam", "Pver", "Shys"))
+
+surv_2 <- surv_2 |> rename(Survival = "Survival_2",
+                           log_size = "log_2022")
+
+surv_2_sub <- surv_2 |> 
+  filter(!Bleaching_scores == "6")
+
+surv_2_sub <- surv_2_sub |> 
+  mutate(Bleaching_scores = factor(Bleaching_scores),
+         bl_cat1 = fct_recode(Bleaching_scores,
+                              `no bleaching` = "1",
+                              `minor bleaching` = "2",
+                              `major bleaching` = "3",
+                              `fully bleached` = "4",
+                              `recent partial mortality` = "5"),
+         bl_cat2 = fct_recode(Bleaching_scores,
+                              `no bleaching` = "1",
+                              `partial bleaching` = "2",
+                              `partial bleaching` = "3",
+                              `fully bleached` = "4",
+                              `recent partial mortality` = "5"))
+```
+
+For these taxa we decided to filter out colonies smaller than 5 cm in diameter (n = 2163 - 2126 = 37 colonies)
+
+```{r}
+#| label: survival prep2
+#| output: false
+#| echo: false
+#| eval: true
+#| warning: false
+#| message: false
+
+#Filter out colonies that are less than 5cm in diameter
+# Area = πr^2
+# Where π (pi) is approximately 3.14159, and r is the radius of the circle.
+# So if we assume colonies are circle, and we want to filter out the colonies with D < 5 cm, the radius (r) is half of the diameter, so r = 2.5 cm / 2 = 5 cm.
+# Calculate the area of a circle R = 2.5 cm:
+# Area = π * (2.5 cm)^2
+# Area ≈ 78.54 square centimeters
+# So, the area of a circle with a diameter of 5 centimeters is approximately 19.6 square centimeters
+
+surv_2_sub <- surv_2_sub |> 
+  filter(Area_cm_2022 >= 19.6)
+
+surv_2_sub |> 
+  group_by(Taxa) |> 
+  summarise(total_count = n()) #lowest sample size is Pdam with 208 colonies
+```
+
+## 3.1. Base model for Survival model
+
+### 3.1.a. Acropora staghorn
+
+```{r}
+#| label: model1.1.a selection 
+Abra_s0 <- glmmTMB(Survival ~ log_size : bl_cat1 +
+                (1|Site),
+              data = surv_2_sub[surv_2_sub$Taxa == "Abra",],
+              family = "binomial")
+
+Abra_s1 <- glmmTMB(Survival ~ bl_cat1 + log_size +
+                (1|Site),
+              data = surv_2_sub[surv_2_sub$Taxa == "Abra",],
+              family = "binomial")
+
+Abra_s2 <- glmmTMB(Survival ~ bl_cat1 +
+                (1|Site),
+              data = surv_2_sub[surv_2_sub$Taxa == "Abra",],
+              family = "binomial")
+```
+
+```{r}
+#| label: model1.1.a AIC 
+AIC(Abra_s0, Abra_s1, Abra_s2)
+```
+
+For *A. branching*, the best-fit model includes the interaction between initial size and bleaching severity.
+
+### 3.1.b. Acropora corymbose
+
+```{r}
+#| label: model1.1.b selection 
+Acor_s0 <- glmmTMB(Survival ~ bl_cat1 : log_size +
+                (1|Site),
+              data = surv_2_sub[surv_2_sub$Taxa == "Acor",],
+              family = "binomial")
+
+Acor_s1 <- glmmTMB(Survival ~ bl_cat1 + log_size +
+                (1|Site),
+              data = surv_2_sub[surv_2_sub$Taxa == "Acor",],
+              family = "binomial")
+
+Acor_s2 <- glmmTMB(Survival ~ bl_cat1 +
+                (1|Site),
+              data = surv_2_sub[surv_2_sub$Taxa == "Acor",],
+              family = "binomial")
+```
+
+```{r}
+AIC(Acor_s0, Acor_s1, Acor_s2)
+```
+
+For *A. corymbose*, the best-fit model includes initial size and bleaching severity but not their interaction.
+
+### 3.1.c. Pocillopora damicornis
+
+```{r}
+#| label: model1.1.c selection
+Pdam_s0 <- glmmTMB(Survival ~ bl_cat1 : log_size +
+                (1|Site),
+              data = surv_2_sub[surv_2_sub$Taxa == "Pdam",],
+              family = "binomial")
+
+Pdam_s1 <- glmmTMB(Survival ~ bl_cat1 + log_size +
+                (1|Site),
+              data = surv_2_sub[surv_2_sub$Taxa == "Pdam",],
+              family = "binomial")
+
+Pdam_s2 <- glmmTMB(Survival ~ bl_cat1 +
+                (1|Site),
+              data = surv_2_sub[surv_2_sub$Taxa == "Pdam",],
+              family = "binomial")
+```
+
+```{r}
+AIC(Pdam_s0, Pdam_s1, Pdam_s2)
+```
+
+For *P. damicornis*, the best-fit model includes initial size and bleaching severity but not their interaction.
+
+### 3.1.d. Pocillopora verrucosa
+
+```{r}
+#| label: model1.1.d selection
+Pver_s0 <- glmmTMB(Survival ~ bl_cat1 : log_size +
+                (1|Site),
+              data = surv_2_sub[surv_2_sub$Taxa == "Pver",],
+              family = "binomial")
+Pver_s1 <- glmmTMB(Survival ~ bl_cat1 + log_size +
+                (1|Site),
+              data = surv_2_sub[surv_2_sub$Taxa == "Pver",],
+              family = "binomial")
+Pver_s2 <- glmmTMB(Survival ~ bl_cat1 +
+                (1|Site),
+              data = surv_2_sub[surv_2_sub$Taxa == "Pver",],
+              family = "binomial")
+```
+
+```{r}
+AIC(Pver_s0, Pver_s1, Pver_s2)
+```
+
+For *P. verrucosa*, the best-fit model includes initial size and bleaching severity but not their interaction.
+
+### 3.1.e. Seriatopora hystrix
+
+```{r}
+#| label: model1.1.e selection
+Shys_s0 <- glmmTMB(Survival ~ bl_cat1 : log_size +
+                (1|Site),
+              data = surv_2_sub[surv_2_sub$Taxa == "Shys",],
+              family = "binomial")
+Shys_s1 <- glmmTMB(Survival ~ bl_cat1 + log_size +
+                (1|Site),
+              data = surv_2_sub[surv_2_sub$Taxa == "Shys",],
+              family = "binomial")
+Shys_s2 <- glmmTMB(Survival ~ bl_cat1 +
+                (1|Site),
+              data = surv_2_sub[surv_2_sub$Taxa == "Shys",],
+              family = "binomial")
+```
+
+```{r}
+AIC(Shys_s0, Shys_s1, Shys_s2)
+```
+
+For *S. hystrix*, the best-fit model includes initial size interacting with bleaching severity.
+
+## 3.1.f. Summary figures
+
+```{r}
+#| label: model1.1.predictions
+#| echo: false
+Abra_s0_preds <- predict_response(Abra_s0, terms = c("log_size [all]", "bl_cat1"), margin = "marginalmeans")
+Acor_s1_preds <- predict_response(Acor_s1, terms = "log_size [all]", margin = "marginalmeans")
+Pdam_s1_preds <- predict_response(Pdam_s1, terms = c("log_size [all]"), margin = "marginalmeans")
+Pver_s1_preds <- predict_response(Pver_s1, terms = c("log_size [all]"), margin = "marginalmeans")
+Shys_s0_preds <- predict_response(Shys_s0, terms = c("log_size [all]", "bl_cat1"), margin = "marginalmeans")
+```
+
+```{r}
+#| label: model1.1.predictions cont.
+#| echo: false
+Abra_s0_preds$Taxa = "Abra"
+Pdam_s1_preds$Taxa = "Pdam"
+Pver_s1_preds$Taxa = "Pver"
+Acor_s1_preds$Taxa = "Acor"
+Shys_s0_preds$Taxa = "Shys"
+
+group_int <- rbind(Abra_s0_preds, Shys_s0_preds)
+group_no_int <- rbind(Acor_s1_preds, Pdam_s1_preds, Pver_s1_preds)
+```
+
+```{r}
+#| label: model1.1. pred for bl_cat
+#| echo: false
+#| results: false
+
+surv_bl_preds1 <- predict_response(Acor_s1, terms = "bl_cat1 [all]", margin = "marginalmeans")
+surv_bl_preds1$Taxa = "Acor"
+surv_bl_preds2 <- predict_response(Pdam_s1, terms = "bl_cat1 [all]", margin = "marginalmeans")
+surv_bl_preds2$Taxa = "Pdam"
+surv_bl_preds3 <- predict_response(Pver_s1, terms = "bl_cat1 [all]", margin = "marginalmeans")
+surv_bl_preds3$Taxa = "Pver"
+surv_bl_preds <- rbind(surv_bl_preds1, surv_bl_preds2, surv_bl_preds3)
+
+surv_bl_preds |> 
+  mutate(x = factor(x, levels = c("no bleaching", "minor bleaching", "major bleaching", "fully bleached", "recent partial mortality")))
+surv_bl_preds |> mutate(Taxa = factor(Taxa))
+```
+
+```{r}
+#| label: model1.1. figure
+#| fig-width: 10
+#| fig-height: 10
+
+taxa_labels1 <- c("Abra" = "A. branching",
+                 "Shys" = "S. hystrix")
+
+taxa_labels2 <- c("Acor" = "A. corymbose",
+                 "Pdam" = "P. damicornis",
+                 "Pver" = "P. verrucosa")
+
+colours_sev = c("#F0E442",  "#E69F00", "#D55E00", "red", "black")
+
+surv_plotA <- ggplot(group_int, aes(x = x, y = predicted, color = group)) +
+  geom_line(linewidth = 1.2) +
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high, fill = group), alpha = 0.2, color = NA) +
+  facet_wrap(~Taxa, labeller =  as_labeller(taxa_labels1), ) +
+  scale_fill_manual(values = colours_sev) +
+  scale_color_manual(values = colours_sev) +
+  labs(title = "A) ", 
+       x = "Log Area 2022", 
+       y = "Survival Probability", 
+       color = "Bleaching Category", 
+       fill = "Bleaching Category") +
+  theme_bw() +
+  xlab("initial size (log)") +
+  theme(text = element_text(size = 12),
+        panel.grid.major.y = element_line(linetype = "dashed"),
+        strip.text = element_text(size = 12),
+        legend.position = "none"
+  )
+
+surv_plotB <- ggplot(group_no_int, aes(x = x, y = predicted)) +
+  geom_line(linewidth = 1.2, color = "blue") +
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = 0.2, color = NA) +
+  facet_wrap(~Taxa, labeller =  as_labeller(taxa_labels2), ) +
+  labs(title = "B) ", 
+       x = "initial size (log)", 
+       y = "") +
+  theme_bw() +
+  scale_y_continuous(breaks = seq(0, 1, by = 0.25)) +
+  theme(text = element_text(size = 12),
+        panel.grid.major.y = element_line(linetype = "dashed"),
+        strip.text = element_text(size = 12)
+  )
+
+surv_plotC <- ggplot()+
+  geom_errorbar(data = surv_bl_preds, aes(x = x, ymin = conf.low, ymax = conf.high, 
+                                   group = Taxa), width = 0.1, linewidth = 0.8) +
+  geom_point(data = surv_bl_preds, aes(x = x, y = predicted, fill = x, group = Taxa),
+             size = 4, pch = 21) +
+  scale_colour_manual(values = colours_sev,
+                      name = "") +
+  scale_fill_manual(values = colours_sev,
+                    name = "") +
+  scale_y_continuous(breaks = seq(0, 1, by = 0.25)) +
+  theme_bw() +
+  facet_wrap(~ Taxa, labeller =  as_labeller(taxa_labels2), )+
+  labs(title = "C)", 
+       x = "", 
+       y = "Survival probability") +
+  theme(
+    text = element_text(size = 12),
+    axis.text.x = element_blank(),
+    panel.grid.major.y = element_line(linetype = "dashed"),
+    panel.grid.minor.y = element_blank(),
+    strip.text = element_text(size = 12),
+    legend.position = "bottom",
+    legend.text = element_text(size = 12)
+  )+
+  scale_x_discrete(limits = levels(surv_bl_preds$x))
+
+surv_plotA + surv_plotB + surv_plotC + plot_layout(ncol = 2)
+
+```
+
+## 3.2. Data exploration - raw data plotting
+
+### 3.2.a. Mortality rates pre- and post-bleaching (raw data plotting)
+
+```{r}
+#| label: Barplot1
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 12
+#| fig-height: 10
+
+surv1_summary <- surv_1 |>
+  group_by(Taxa) |>
+  summarise(
+    dead_count = sum(Survival_1 == 0),
+    alive_count = sum(Survival_1 == 1),
+    total_count = n(),
+    dead_proportion = dead_count / total_count,
+    alive_proportion = alive_count / total_count,
+    .groups = 'drop'
+  ) |>
+  arrange(desc(dead_proportion))
+
+
+surv1_long <- surv1_summary |>
+  pivot_longer(cols = c(dead_proportion, alive_proportion), 
+               names_to = "status", 
+               values_to = "proportion")
+
+
+surv1_long <- surv1_long |>
+  group_by(Taxa) |>
+  mutate(cumulative = cumsum(proportion))
+
+surv1_long <- surv1_long |> 
+  mutate(Taxa = factor(Taxa, levels = c("Abra", "Acor", "Pdam", "Pver","Shys")))
+
+mort1 <- ggplot(surv1_long, aes(x = Taxa, y = proportion, fill = status)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = c("dead_proportion" = "black", "alive_proportion" = "grey"), 
+                    labels = c("dead_proportion" = "Dead", "alive_proportion" = "Alive")) +
+  labs(x = "", y = "Proportion of colonies", fill = "Survival", title = "A - year 1 (no bleaching)") +
+  geom_text(aes(label = scales::percent(proportion, accuracy = 0.1), 
+                y = cumulative - proportion / 2), 
+            color = "white") +
+  theme_bw() +
+    scale_x_discrete(limits = c("Abra", "Acor", "Pdam", "Pver","Shys"),
+                   labels = c("Acropora branching",
+                              "Acropora corymbose",
+                              "Pocillopora damicornis",
+                              "Pocillopora verrucosa",
+                              "Seriatopora hystrix")) +
+  theme(
+    legend.position = "none",
+    axis.text.x = element_text(angle = 90, hjust = 1, size = 12),
+    legend.text = element_text(size = 12),
+    legend.title = element_blank()
+  )
+
+
+
+surv2_summary <- surv_2 |>
+  group_by(Taxa) |>
+  summarise(
+    dead_count = sum(Survival_2 == 0),
+    alive_count = sum(Survival_2 == 1),
+    total_count = n(),
+    dead_proportion = dead_count / total_count,
+    alive_proportion = alive_count / total_count,
+    .groups = 'drop'
+  ) |>
+  arrange(desc(dead_proportion))
+
+
+surv2_long <- surv2_summary |>
+  pivot_longer(cols = c(dead_proportion, alive_proportion), 
+               names_to = "status", 
+               values_to = "proportion")
+
+
+surv2_long <- surv2_long |>
+  group_by(Taxa) |>
+  mutate(cumulative = cumsum(proportion))
+
+surv2_long <- surv2_long |> 
+  mutate(Taxa = factor(Taxa, levels = c("Abra", "Acor", "Pdam", "Pver","Shys")))
+
+mort2 <- ggplot(surv2_long, aes(x = Taxa, y = proportion, fill = status)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = c("dead_proportion" = "black", "alive_proportion" = "grey"), 
+                    labels = c("dead_proportion" = "Dead", "alive_proportion" = "Alive")) +
+  labs(x = "", y = "Proportion of colonies", fill = "Survival", title = "B - year 2 (bleaching)") +
+  geom_text(aes(label = scales::percent(proportion, accuracy = 0.1), 
+                y = cumulative - proportion / 2), 
+            color = "white") +
+  theme_bw() +
+    scale_x_discrete(limits = c("Abra", "Acor", "Pdam", "Pver","Shys"),
+                   labels = c("Acropora branching",
+                              "Acropora corymbose",
+                              "Pocillopora damicornis",
+                              "Pocillopora verrucosa",
+                              "Seriatopora hystrix")) +
+  theme(
+    legend.position = "right",
+    axis.text.x = element_text(angle = 90, hjust = 1, size = 12),
+    legend.text = element_text(size = 12),
+    legend.title = element_blank()
+  )
+
+mort1 + mort2 + plot_layout(ncol = 1)
+
+```
+
+Mortality increased after bleaching for all taxa.
+
+### 3.2.b. Survival rates per bleaching category (raw data plotting)
+
+```{r}
+#| label: survHeatmap
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 14
+#| fig-height: 8
+
+surv_2_sub <- surv_2 |> 
+  filter(!Bleaching_scores == "6")
+
+taxa_labels <- c("Abra" = "Acropora branching",
+                 "Acor" = "Acropora corymbose",
+                 "Pdam" = "Pocillopora damicornis",
+                 "Pver" = "Pocillopora verrucosa",
+                 "Shys" = "Seriatopora hystrix")
+
+bl_cat <- c("1" = "No bleaching",
+            "2" = "Minor bleaching",
+            "3" = "Major bleaching",
+            "4" = "Fully bleached",
+            "5" = "Recent partial mortality")
+
+Taxa_sum2 <- surv_2_sub |> 
+  group_by(Taxa, Bleaching_scores) |> 
+  summarize(Survival_Rate2 = mean(Survival_2),
+            Colony_count2 = n())
+
+ggplot(Taxa_sum2, aes(x = factor(Bleaching_scores), y = Taxa, fill = Survival_Rate2)) +
+  geom_tile() +
+  geom_text(aes(label = Colony_count2), color = "white", size = 5) +
+  scale_fill_gradient(low = "black", high = "grey", limits = c(min_surv, max_surv)) +
+  scale_y_discrete(limits = c("Shys", "Pver","Pdam","Acor","Abra"),
+                   labels = c("Seriatopora hystrix",
+                              "Pocillopora verrucosa",
+                              "Pocillopora damicornis",
+                              "Acropora corymbose",
+                              "Acropora branching")) +
+  scale_x_discrete(labels = bl_cat) +
+  labs(x = "", 
+       y = "", 
+       fill = "Survival Rate") +
+  theme_classic()+
+  theme(
+    axis.text.x = element_text(size = 12, angle = 90),
+    axis.title.y = element_text(size = 12),
+    legend.text = element_text(size =12),
+    legend.title = element_text(size = 12)
+  )
+```
+
+### 3.2.c. Growth rates pre- and post-bleaching (all colonies)
+
+```{r}
+#| label: growfig1
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 14
+#| fig-height: 16
+gt1 <- grow1 |> ggplot(
+  aes(x = log10_2021, y = log10_2022, group = Taxa)) +
+  geom_point(alpha = 0.1, pch = 16) +
+  geom_smooth(method = "lm", color = "deepskyblue")+
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  labs(title = "A - Year 1 (pre-bleaching)",
+       x = "Size in 2021 (log)",
+       y = "Size in 2022 (log)") +
+  # scale_x_continuous(limits = c(0, 12), breaks = seq(0, 12, by = 2)) +
+  # scale_y_continuous(limits = c(0, 12), breaks = seq(0, 12, by = 2)) +
+  facet_wrap(~Taxa, scales = "free", labeller =  as_labeller(taxa_labels), ) +
+  theme_bw()
+
+gt2 <- grow2 |> ggplot(
+  aes(x = log10_2022, y = log10_2023, group = Taxa)) +
+  geom_point(alpha = 0.1, pch = 16) +
+  geom_smooth(method = "lm", color = "darkorange")+
+  geom_abline(slope = 1, intercept = 0) +
+  labs(title = "B - Year 2 (post-bleaching)",
+       x = "Size in 2022 (log)",
+       y = "Size in 2023 (log)") +
+  # scale_x_continuous(limits = c(0, 12), breaks = seq(0, 12, by = 2)) +
+  # scale_y_continuous(limits = c(0, 12), breaks = seq(0, 12, by = 2)) +
+  facet_wrap(~Taxa, scales = "free", labeller =  as_labeller(taxa_labels), ) +
+  theme_bw()
+
+gt1 + gt2 + plot_layout(ncol = 1)
+```
+
+The dashed line represents the no-growth line (intercept 0, slope 1). All slopes are \< 1 meaning growth rates decreases with size. It looks like in general in year 2, the curves are closer to the no-growth line.
+
+### 3.2.d. Growth rates pre- and post-bleaching (healthy colonies only)
+
+```{r}
+#| label: healthydataprep
+#| echo: false
+#| message: false
+#| warning: false
+#| results: hide
+rawdata <- read_csv("C:/Users/jc815475/OneDrive - James Cook University/PhD data/3_Coral growth/Data/CSV/growth_surv_data.csv", trim_ws=TRUE)
+
+dat1 <- rawdata |> 
+  mutate(Taxa_2023 = factor(Class_2023),
+         Taxa_2023 = fct_recode(Taxa_2023,
+                                Atab = "Acyt",
+                                Atab = "Ahya",
+                                Abra = "Asta",
+                                Adgt = "Agem",
+                                Adgt = "Ahum",
+                                Acor = "Amil",
+                                Acor = "Aten",
+                                Gspp = "Gedw",
+                                Gspp = "Gret"),
+         Taxa_2022 = factor(Class_2022),
+         Taxa_2022 = fct_recode(Taxa_2022,
+                                Atab = "Acyt",
+                                Atab = "Ahya",
+                                Abra = "Asta",
+                                Adgt = "Agem",
+                                Adgt = "Ahum",
+                                Acor = "Amil",
+                                Acor = "Aten",
+                                Gspp = "Gedw",
+                                Gspp = "Gret"),
+         Taxa_2021 = factor(Class_2021),
+         Taxa_2021 = fct_recode(Taxa_2021,
+                                Atab = "Acyt",
+                                Atab = "Ahya",
+                                Abra = "Asta",
+                                Adgt = "Agem",
+                                Adgt = "Ahum",
+                                Acor = "Amil",
+                                Acor = "Aten",
+                                Gspp = "Gedw",
+                                Gspp = "Gret"))
+
+### Subset data for each transition
+healthy <- dat1 |> 
+  filter(to_use_0 == "yes" & to_use_growth_1 == "yes" & to_use_growth_2 == "yes")
+
+### Only retain taxa of interest
+healthy <- healthy |> 
+  filter(Taxa_2023 %in% c("Abra", "Acor", "Pdam", "Pver", "Shys")) |> 
+  droplevels()
+
+healthy <- healthy |> 
+  filter(Taxa_2022 %in% c("Abra", "Acor", "Pdam", "Pver", "Shys")) |> 
+  droplevels()
+
+healthy <- healthy |> 
+  filter(Taxa_2021 %in% c("Abra", "Acor", "Pdam", "Pver", "Shys")) |> 
+  droplevels()
+
+### only retain rows where Taxa match throughout the years
+healthy <- healthy[healthy$Taxa_2021 == healthy$Taxa_2022 & healthy$Taxa_2022 == healthy$Taxa_2023, ]
+
+### Check taxa levels for each year
+levels(healthy$Taxa_2021)
+levels(healthy$Taxa_2022)
+levels(healthy$Taxa_2023)
+
+### only retain colonies that stayed healthy in Year 2
+healthy <- healthy |> 
+  mutate(Bleaching_scores = factor(Bleaching_scores)) |> 
+  filter(Bleaching_scores == "1")
+
+## Setup hierarchical design
+healthy <- healthy |> 
+  mutate(Plot = factor(Plot_ID),
+         Zone = factor(str_sub(Plot, 9,9)),
+         Reef = factor(str_sub(Plot, 1,4)),
+         Site = factor(str_sub(Plot, 1,9)), #unique combination of Reef/Site/Zone
+         Site_type = factor(str_sub(Plot, 6, 7)),
+         Colony_ID = row_number(),
+         Colony = factor(paste(Plot, Colony_ID, sep = "_")),
+         Habitat = factor(paste(Site_type, Zone, sep = "_")),
+         Reef = fct_recode(Reef,
+                           PA = "PAPE",
+                           PA = "PAOR"),
+         Depth = fct_recode(Zone,
+                            Deep = "D",
+                            Shallow = "S"),
+         Area_cm_2021 = Area_2021*10000, #change area in m2 to cm2
+         Area_cm_2022 = Area_2022*10000,
+         Area_cm_2023 = Area_2023*10000,
+         log_2021= log(Area_cm_2021),
+         log_2022= log(Area_cm_2022),
+         log_2023= log(Area_cm_2023),
+         log10_2021=log10(Area_cm_2021),
+         log10_2022 =log10(Area_cm_2022),
+         log10_2023 =log10(Area_cm_2023),
+         Taxa = factor(Taxa_2021),
+         Cross_shelf = fct_recode(Reef,
+                                  offshore = "OCCH",
+                                  offshore = "OCDA",
+                                  offshore = "OCLB",
+                                  inshore = "PA"))
+
+healthy <- healthy |> 
+  select(Reef, Site, Plot, Colony, Habitat, Depth, Cross_shelf, Taxa, Area_cm_2021, Area_cm_2022, Area_cm_2023, log_2021, log_2022, log_2023, log10_2021, log10_2022, log10_2023, Note_2021, Note_2022, Note_2023)
+
+```
+
+```{r}
+#| label: healthyrawfig
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 12
+#| fig-height: 10
+# Pivot longer to reshape the dataset for modeling
+healthy_long <- healthy |> 
+  pivot_longer(cols = matches(".*_[0-9]{4}"),  
+               names_to = c(".value", "Year"), 
+               names_pattern = "(.+)_(.+)")    
+
+healthy_long <- healthy_long |> 
+  mutate(Year = factor(Year),
+         Taxa = factor(Taxa))
+
+
+# Plot raw data
+data_2021_2022 <- healthy |>
+  select(Taxa, log10_2021, log10_2022) |>
+  rename(log_previous = log10_2021, log_size = log10_2022) |>
+  mutate(Year_transition = "2021-2022")
+
+data_2022_2023 <- healthy |>
+  select(Taxa, log10_2022, log10_2023) |>
+  rename(log_previous = log10_2022, log_size = log10_2023) |>
+  mutate(Year_transition = "2022-2023")
+
+plot_data <- bind_rows(data_2021_2022, data_2022_2023)
+
+ggplot(plot_data, aes(x = log_previous, y = log_size, color = Year_transition)) +
+  geom_point(alpha = 0.1, size = 2) +
+  geom_smooth(method = "lm", se = FALSE) +  
+  facet_wrap(~ Taxa, scales = "free", labeller =  as_labeller(taxa_labels)) +  
+  labs(x = "log(size at t previous)", y = "log(size at t)") +
+  theme_bw() +
+  theme(
+    legend.title = element_blank(),
+    legend.position = "bottom"
+  ) +
+  scale_color_manual(values = c("2021-2022" = "cadetblue", "2022-2023" = "#D55E00"))
+```
+
+### 3.2.f. Growth per taxa and bleaching category
+
+```{r}
+#| label: growfig2
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 12
+#| fig-height: 10
+grow2 <- grow2 |> 
+  mutate(bl_cat1 = case_when(
+    is.na(Bleaching_scores)  ~ "no bleaching",
+    Bleaching_scores == 1   ~ "no bleaching",
+    Bleaching_scores == 2   ~ "minor bleaching",
+    Bleaching_scores == 3   ~ "major bleaching",
+    Bleaching_scores == 4   ~ "fully bleached",
+    Bleaching_scores == 5   ~ "recent partial mortality"
+  ))
+
+grow2 <- grow2 |> 
+  mutate(bl_cat1 = factor(bl_cat1, levels = c("no bleaching", "minor bleaching", "major bleaching", "fully bleached", "recent partial mortality")))
+
+colours_bl = c("#F0E442","#E69F00", "#D55E00" ,"#990000", "black")
+
+grow2 |> ggplot(
+  aes(x = log10_2022, y = log10_2023, group = Taxa, colour = bl_cat1)) +
+  geom_point(position = position_jitter(width = 0.4, height = 0.4), alpha = 0.2, pch = 16) +
+  scale_color_manual(values = colours_bl) +
+  labs(x = "Size in 2022 (log)",
+       y = "Size in 2023 (log)") +
+  # scale_x_continuous(limits = c(0, 12), breaks = seq(0, 12, by = 2)) +
+  # scale_y_continuous(limits = c(0, 12), breaks = seq(0, 12, by = 2)) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  geom_smooth(aes(group = bl_cat1, colour = bl_cat1), method = "lm", se = FALSE, size = 1.2)+
+  facet_wrap(~Taxa, scales = "free", labeller =  as_labeller(taxa_labels), ) +
+  theme_bw() +
+  theme(
+    legend.title = element_blank()
+  )
+```
